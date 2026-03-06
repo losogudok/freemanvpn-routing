@@ -215,6 +215,14 @@ rule-providers:
     path: ./ruleset/category-ru.mrs
     proxy: ⚡️ Авто
     interval: 86400
+  whitelist:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geosite/release/mihomo/whitelist.mrs
+    path: ./ruleset/whitelist.mrs
+    proxy: ⚡️ Авто
+    interval: 86400
   microsoft:
     type: http
     behavior: domain
@@ -436,7 +444,8 @@ rules:
   - RULE-SET,pinterest,DIRECT
 
   # --- DIRECT ---
-  - RULE-SET,category-ru,DIRECT                    # RU-домены
+  - RULE-SET,category-ru,DIRECT                    # RU-сайты, жесткая зависимость от whitelist
+  - RULE-SET,whitelist,DIRECT                      # RU-белосписочный
 
   # --- Торренты ---
   - RULE-SET,torrent-clients,DIRECT                # торрент-клиенты по процессу

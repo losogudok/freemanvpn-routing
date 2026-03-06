@@ -75,6 +75,14 @@ jobs:
               '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
               HAPP/DEFAULT.JSON > "$tmp"
             mv "$tmp" HAPP/DEFAULT.JSON
+            tmp="$(mktemp)"
+            jq \
+              --arg ts "$now_epoch" \
+              --arg geoip "$geoip_url" \
+              --arg geosite "$geosite_url" \
+              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
+              HAPP/WHITELIST.JSON > "$tmp"
+            mv "$tmp" HAPP/WHITELIST.JSON
           fi
 
           tmp="$(mktemp)"
@@ -90,9 +98,11 @@ jobs:
           mv "$tmp" HAPP/JSONSUB.JSON
 
           default_b64="$(jq -c . HAPP/DEFAULT.JSON | base64 -w 0)"
+          whitelist_b64="$(jq -c . HAPP/WHITELIST.JSON | base64 -w 0)"
           jsonsub_b64="$(jq -c . HAPP/JSONSUB.JSON | base64 -w 0)"
 
           printf 'happ://routing/onadd/%s\n' "$default_b64" > HAPP/DEFAULT.DEEPLINK
+          printf 'happ://routing/onadd/%s\n' "$whitelist_b64" > HAPP/WHITELIST.DEEPLINK
           printf 'happ://routing/onadd/%s\n' "$jsonsub_b64" > HAPP/JSONSUB.DEEPLINK
           
       - name: Update INCY configs
@@ -148,6 +158,14 @@ jobs:
               '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
               INCY/DEFAULT.JSON > "$tmp"
             mv "$tmp" INCY/DEFAULT.JSON
+            tmp="$(mktemp)"
+            jq \
+              --arg ts "$now_epoch" \
+              --arg geoip "$geoip_url" \
+              --arg geosite "$geosite_url" \
+              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
+              INCY/WHITELIST.JSON > "$tmp"
+            mv "$tmp" INCY/WHITELIST.JSON
           fi
 
           tmp="$(mktemp)"
@@ -163,9 +181,11 @@ jobs:
           mv "$tmp" INCY/JSONSUB.JSON
 
           default_b64="$(jq -c . INCY/DEFAULT.JSON | base64 -w 0)"
+          whitelist_b64="$(jq -c . INCY/WHITELIST.JSON | base64 -w 0)"
           jsonsub_b64="$(jq -c . INCY/JSONSUB.JSON | base64 -w 0)"
 
           printf 'incy://routing/onadd/%s\n' "$default_b64" > INCY/DEFAULT.DEEPLINK
+          printf 'incy://routing/onadd/%s\n' "$whitelist_b64" > INCY/WHITELIST.DEEPLINK
           printf 'incy://routing/onadd/%s\n' "$jsonsub_b64" > INCY/JSONSUB.DEEPLINK
 
       - name: Commit and push changes
@@ -177,7 +197,7 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          git add HAPP/DEFAULT.JSON HAPP/JSONSUB.JSON HAPP/DEFAULT.DEEPLINK HAPP/JSONSUB.DEEPLINK INCY/DEFAULT.JSON INCY/JSONSUB.JSON INCY/DEFAULT.DEEPLINK INCY/JSONSUB.DEEPLINK
+          git add HAPP/DEFAULT.JSON HAPP/WHITELIST.JSON HAPP/JSONSUB.JSON HAPP/DEFAULT.DEEPLINK HAPP/WHITELIST.DEEPLINK HAPP/JSONSUB.DEEPLINK INCY/DEFAULT.JSON INCY/WHITELIST.JSON INCY/JSONSUB.JSON INCY/DEFAULT.DEEPLINK INCY/WHITELIST.DEEPLINK INCY/JSONSUB.DEEPLINK
 
           if git diff --cached --quiet; then
             exit 0

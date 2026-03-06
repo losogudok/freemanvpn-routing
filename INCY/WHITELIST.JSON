@@ -17,30 +17,13 @@
   "RouteOrder": "block-proxy-direct",
   "DirectSites": [
     "geosite:private",
-    "geosite:category-ru",
-    "geosite:whitelist",
-    "geosite:microsoft",
-    "geosite:apple",
-    "geosite:google-play",
-    "geosite:epicgames",
-    "geosite:riot",
-    "geosite:escapefromtarkov",
-    "geosite:steam",
-    "geosite:origin",
-    "geosite:twitch",
-    "geosite:pinterest",
-    "geosite:faceit"
+    "geosite:whitelist"
   ],
   "DirectIp": [
     "geoip:private",
-    "geoip:direct"
+    "geoip:whitelist"
   ],
-  "ProxySites": [
-    "geosite:github",
-    "geosite:twitch-ads",
-    "geosite:youtube",
-    "geosite:telegram"
-  ],
+  "ProxySites": [],
   "ProxyIp": [],
   "BlockSites": [
     "geosite:win-spy",
