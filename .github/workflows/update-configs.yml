@@ -94,7 +94,7 @@ jobs:
              | .ProxyIp = []
              | .BlockSites = []
              | .BlockIp = []' \
-            HAPP/DEFAULT.JSON > "$tmp"
+            HAPP/JSONSUB.JSON > "$tmp"
           mv "$tmp" HAPP/JSONSUB.JSON
 
           default_b64="$(jq -c . HAPP/DEFAULT.JSON | base64 -w 0)"
@@ -177,7 +177,7 @@ jobs:
              | .ProxyIp = []
              | .BlockSites = []
              | .BlockIp = []' \
-            INCY/DEFAULT.JSON > "$tmp"
+            INCY/JSONSUB.JSON > "$tmp"
           mv "$tmp" INCY/JSONSUB.JSON
 
           default_b64="$(jq -c . INCY/DEFAULT.JSON | base64 -w 0)"
