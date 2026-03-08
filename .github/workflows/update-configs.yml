@@ -83,19 +83,15 @@ jobs:
               '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
               HAPP/WHITELIST.JSON > "$tmp"
             mv "$tmp" HAPP/WHITELIST.JSON
+            tmp="$(mktemp)"
+            jq \
+              --arg ts "$now_epoch" \
+              --arg geoip "$geoip_url" \
+              --arg geosite "$geosite_url" \
+              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
+              HAPP/JSONSUB.JSON > "$tmp"
+            mv "$tmp" HAPP/JSONSUB.JSON
           fi
-
-          tmp="$(mktemp)"
-          jq \
-            '.UseChunkFiles = "false"
-             | .DirectSites = []
-             | .DirectIp = []
-             | .ProxySites = []
-             | .ProxyIp = []
-             | .BlockSites = []
-             | .BlockIp = []' \
-            HAPP/JSONSUB.JSON > "$tmp"
-          mv "$tmp" HAPP/JSONSUB.JSON
 
           default_b64="$(jq -c . HAPP/DEFAULT.JSON | base64 -w 0)"
           whitelist_b64="$(jq -c . HAPP/WHITELIST.JSON | base64 -w 0)"
@@ -166,19 +162,15 @@ jobs:
               '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
               INCY/WHITELIST.JSON > "$tmp"
             mv "$tmp" INCY/WHITELIST.JSON
+            tmp="$(mktemp)"
+            jq \
+              --arg ts "$now_epoch" \
+              --arg geoip "$geoip_url" \
+              --arg geosite "$geosite_url" \
+              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
+              INCY/JSONSUB.JSON > "$tmp"
+            mv "$tmp" INCY/JSONSUB.JSON
           fi
-
-          tmp="$(mktemp)"
-          jq \
-            '.UseChunkFiles = "false"
-             | .DirectSites = []
-             | .DirectIp = []
-             | .ProxySites = []
-             | .ProxyIp = []
-             | .BlockSites = []
-             | .BlockIp = []' \
-            INCY/JSONSUB.JSON > "$tmp"
-          mv "$tmp" INCY/JSONSUB.JSON
 
           default_b64="$(jq -c . INCY/DEFAULT.JSON | base64 -w 0)"
           whitelist_b64="$(jq -c . INCY/WHITELIST.JSON | base64 -w 0)"
