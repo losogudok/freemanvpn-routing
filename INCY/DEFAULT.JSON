@@ -1,5 +1,5 @@
 {
-  "Name": "RoscomVPN",
+  "Name": "FreemanVPN",
   "GlobalProxy": "true",
   "UseChunkFiles": "true",
   "RemoteDns": "8.8.8.8",
@@ -30,7 +30,9 @@
     "geosite:steam",
     "geosite:twitch",
     "geosite:pinterest",
-    "geosite:faceit"
+    "geosite:faceit",
+    "geosite:blizzard",
+    "geosite:ip-checkers"
   ],
   "DirectIp": [
     "geoip:private",

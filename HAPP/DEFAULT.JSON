@@ -1,5 +1,5 @@
 {
-  "Name": "RoscomVPN",
+  "Name": "FreemanVPN",
   "GlobalProxy": "true",
   "UseChunkFiles": "true",
   "RemoteDns": "8.8.8.8",
@@ -10,8 +10,8 @@
   "DomesticDNSType": "DoH",
   "DomesticDNSDomain": "https://77.88.8.8/dns-query",
   "DomesticDNSIP": "77.88.8.8",
-  "Geoipurl": "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geoip@202604190535/release/geoip.dat",
-  "Geositeurl": "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geosite@202604152235/release/geosite.dat",
+  "Geoipurl": "https://cdn.jsdelivr.net/gh/losogudok/fremanvpn-geoip@202604190535/release/geoip.dat",
+  "Geositeurl": "https://cdn.jsdelivr.net/gh/losogudok/fremanvpn-geosite@202604152235/release/geosite.dat",
   "LastUpdated": "1776576995",
   "DnsHosts": {
     "lkfl2.nalog.ru": "213.24.64.175",
@@ -30,7 +30,9 @@
     "geosite:steam",
     "geosite:twitch",
     "geosite:pinterest",
-    "geosite:faceit"
+    "geosite:faceit",
+    "geosite:blizzard",
+    "geosite:ip-checkers"
   ],
   "DirectIp": [
     "geoip:private",
