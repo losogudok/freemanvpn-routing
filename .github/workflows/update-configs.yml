@@ -249,9 +249,10 @@ jobs:
             SERVER="$(echo "${SERVERS[$i]}" | xargs)"
 
             set +e
-            RESULT=$(ssh $SSH_OPTS "$SERVER" bash -s -- \
+            LOG_FILE=$(mktemp)
+            ssh $SSH_OPTS "$SERVER" bash -s -- \
               "$HAPP_DEFAULT" "$HAPP_WHITELIST" "$HAPP_JSON" \
-              "$INCY_DEFAULT" "$INCY_WHITELIST" "$INCY_JSON" 2>&1 <<'REMOTE_SCRIPT'
+              "$INCY_DEFAULT" "$INCY_WHITELIST" "$INCY_JSON" > "$LOG_FILE" 2>&1 <<'REMOTE_SCRIPT'
               set -euo pipefail
 
               HAPP_DEFAULT="$1"; HAPP_WHITELIST="$2"; HAPP_JSON="$3"
@@ -340,22 +341,28 @@ jobs:
               else
                 echo "updated ${ACTIONS% }"
               fi
-          REMOTE_SCRIPT
-            )
+            REMOTE_SCRIPT
             ssh_exit=$?
             set -e
 
-            RESULT=$(echo "$RESULT" | tail -1)
-
             if [ $ssh_exit -ne 0 ]; then
-              echo "SRV${SRV_NUM} - FAIL (connection error)"
+              if [ $ssh_exit -eq 255 ]; then
+                echo "SRV${SRV_NUM} - FAIL (connection error)"
+              else
+                echo "SRV${SRV_NUM} - FAIL (script error, exit $ssh_exit)"
+              fi
+              sed 's/^/  /' "$LOG_FILE"
               FAIL_COUNT=$((FAIL_COUNT + 1))
-            elif echo "$RESULT" | grep -q "^updated"; then
-              FILES=$(echo "$RESULT" | sed 's/^updated //')
-              echo "SRV${SRV_NUM} - OK (updated $FILES)"
             else
-              echo "SRV${SRV_NUM} - OK (up to date)"
+              RESULT=$(tail -n 1 "$LOG_FILE")
+              if echo "$RESULT" | grep -q "^updated"; then
+                FILES=$(echo "$RESULT" | sed 's/^updated //')
+                echo "SRV${SRV_NUM} - OK (updated $FILES)"
+              else
+                echo "SRV${SRV_NUM} - OK (up to date)"
+              fi
             fi
+            rm -f "$LOG_FILE"
           done
 
           rm -f ~/.ssh/deploy_key
