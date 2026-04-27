@@ -272,8 +272,14 @@ jobs:
               if [ -n "$TARGET" ]; then
                 NEED_RESTART=false
 
-                REMOTE_GEOIP_SHA=$(sudo curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat.sha256" | awk '{print $1}')
-                REMOTE_GEOSITE_SHA=$(sudo curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat.sha256" | awk '{print $1}')
+                # Get remote hashes without sudo (not needed for reading public URLs)
+                REMOTE_GEOIP_SHA=$(curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat.sha256" | awk '{print $1}' || echo "")
+                REMOTE_GEOSITE_SHA=$(curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat.sha256" | awk '{print $1}' || echo "")
+
+                if [ -z "$REMOTE_GEOIP_SHA" ] || [ -z "$REMOTE_GEOSITE_SHA" ]; then
+                  echo "Error: Could not fetch remote hashes"
+                  exit 1
+                fi
 
                 if [ -f "$TARGET/geoip.dat" ]; then
                   LOCAL_GEOIP_SHA=$(sudo sha256sum "$TARGET/geoip.dat" | awk '{print $1}')
@@ -288,15 +294,19 @@ jobs:
                 fi
 
                 if [ "$REMOTE_GEOIP_SHA" != "$LOCAL_GEOIP_SHA" ]; then
-                  sudo curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -o "$TARGET/geoip.dat" "https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat"
-                  sudo chmod 777 "$TARGET/geoip.dat"
+                  TMP_GEOIP=$(mktemp)
+                  curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -o "$TMP_GEOIP" "https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat"
+                  sudo mv "$TMP_GEOIP" "$TARGET/geoip.dat"
+                  sudo chmod 644 "$TARGET/geoip.dat"
                   NEED_RESTART=true
                   ACTIONS="${ACTIONS}geoip.dat "
                 fi
 
                 if [ "$REMOTE_GEOSITE_SHA" != "$LOCAL_GEOSITE_SHA" ]; then
-                  sudo curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -o "$TARGET/geosite.dat" "https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat"
-                  sudo chmod 777 "$TARGET/geosite.dat"
+                  TMP_GEOSITE=$(mktemp)
+                  curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -o "$TMP_GEOSITE" "https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat"
+                  sudo mv "$TMP_GEOSITE" "$TARGET/geosite.dat"
+                  sudo chmod 644 "$TARGET/geosite.dat"
                   NEED_RESTART=true
                   ACTIONS="${ACTIONS}geosite.dat "
                 fi
