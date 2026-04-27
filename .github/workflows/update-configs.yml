@@ -341,7 +341,7 @@ jobs:
               else
                 echo "updated ${ACTIONS% }"
               fi
-            REMOTE_SCRIPT
+          REMOTE_SCRIPT
             ssh_exit=$?
             set -e
 
