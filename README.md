@@ -196,14 +196,3 @@ GitHub Actions:
 - [freemanvpn-geosite](https://github.com/losogudok/freemanvpn-geosite) — доменные списки (geosite.dat)
 
 ---
-
-<div align="center">
-
-> **Ставь ⭐** и не пропусти регулярные обновления для поддержания актуальности списков и оптимальной производительности
-
-##### USDT TRC20: TMu3N2ZjK5omJ7n3WAj5MNCSM5querBXsR
-
-##### Спасибо Всем за поддержку!
-###### Сделано с ❤️ к свободному интернету!
-
-</div>
