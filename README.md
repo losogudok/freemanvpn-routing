@@ -30,7 +30,7 @@
 <table width="100%">
 <thead><tr><th align="left">Способ</th><th align="left">Ссылка</th><th align="left">Описание</th></tr></thead>
 <tbody>
-<tr><td>⚡ Быстрая установка</td><td><a href="https://routing.help">routing.help</a></td><td>Редирект на DEFAULT-диплинк, открыть на устройстве</td></tr>
+<!-- <tr><td>⚡ Быстрая установка</td><td><a href="https://routing.help">routing.help</a></td><td>Редирект на DEFAULT-диплинк, открыть на устройстве</td></tr> -->
 <tr><td colspan="3"><b>DEFAULT</b> — полный профиль: RU/BY direct, YouTube/Telegram/GitHub через прокси, реклама блокируется</td></tr>
 <tr><td>🔗 DEFAULT.DEEPLINK</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/HAPP/DEFAULT.DEEPLINK">Просмотр</a></td><td>Диплинк-ссылка в текстовом формате</td></tr>
 <tr><td>📊 DEFAULT.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/HAPP/DEFAULT.JSON">Просмотр</a></td><td>JSON-конфиг роутинга</td></tr>
@@ -48,7 +48,7 @@
 <table width="100%">
 <thead><tr><th align="left">Способ</th><th align="left">Ссылка</th><th align="left">Описание</th></tr></thead>
 <tbody>
-<tr><td>⚡ Быстрая установка</td><td><a href="https://incy.routing.help">incy.routing.help</a></td><td>Редирект на DEFAULT-диплинк, открыть на устройстве</td></tr>
+<!-- <tr><td>⚡ Быстрая установка</td><td><a href="https://incy.routing.help">incy.routing.help</a></td><td>Редирект на DEFAULT-диплинк, открыть на устройстве</td></tr> -->
 <tr><td colspan="3"><b>DEFAULT</b> — полный профиль: RU/BY direct, YouTube/Telegram/GitHub через прокси, реклама блокируется</td></tr>
 <tr><td>🔗 DEFAULT.DEEPLINK</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/INCY/DEFAULT.DEEPLINK">Просмотр</a></td><td>Диплинк-ссылка в текстовом формате</td></tr>
 <tr><td>📊 DEFAULT.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/INCY/DEFAULT.JSON">Просмотр</a></td><td>JSON-конфиг роутинга</td></tr>
