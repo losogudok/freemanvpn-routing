@@ -36,7 +36,8 @@
   ],
   "DirectIp": [
     "geoip:private",
-    "geoip:direct"
+    "geoip:direct",
+    "geoip:blizzard"
   ],
   "ProxySites": [
     "geosite:google-play",
