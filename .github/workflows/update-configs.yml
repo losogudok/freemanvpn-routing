@@ -248,8 +248,9 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ~/.ssh/deploy_key"
+          SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ~/.ssh/deploy_key)
 
+          # Comma-separated user@host or user@host:port entries.
           IFS=',' read -ra SERVERS <<< "${{ secrets.DEPLOY_SERVERS }}"
 
           TOTAL=${#SERVERS[@]}
@@ -258,10 +259,22 @@ jobs:
           for i in "${!SERVERS[@]}"; do
             SRV_NUM=$((i + 1))
             SERVER="$(echo "${SERVERS[$i]}" | xargs)"
+            SSH_PORT=22
+
+            if [[ "$SERVER" =~ ^(.+):([0-9]+)$ ]]; then
+              SSH_PORT="${BASH_REMATCH[2]}"
+              SERVER="${BASH_REMATCH[1]}"
+            fi
+
+            if (( SSH_PORT < 1 || SSH_PORT > 65535 )); then
+              echo "SRV${SRV_NUM} - FAIL (invalid SSH port: $SSH_PORT)"
+              FAIL_COUNT=$((FAIL_COUNT + 1))
+              continue
+            fi
 
             set +e
             LOG_FILE=$(mktemp)
-            ssh $SSH_OPTS "$SERVER" bash -s -- \
+            ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SERVER" bash -s -- \
               "$HAPP_DEFAULT" "$HAPP_WHITELIST" "$HAPP_JSON" \
               "$INCY_DEFAULT" "$INCY_WHITELIST" "$INCY_JSON" > "$LOG_FILE" 2>&1 <<'REMOTE_SCRIPT'
               set -euo pipefail
