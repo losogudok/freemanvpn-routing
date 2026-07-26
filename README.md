@@ -173,7 +173,7 @@
 <tr><td><a href="https://github.com/losogudok/3x-ui">🚀 3x-ui</a></td><td>Кастомный форк с встроенным FreemanVPN-роутингом, UI-выбором профиля и автообновлением geo-файлов</td></tr>
 <tr><td><a href="ADDON_AUTOROUTING/Marzban/">Marzban</a></td><td><code>subscription.py</code> — один файл для JSON и Non-JSON подписок, тип роутинга через env var</td></tr>
 <tr><td><a href="ADDON_AUTOROUTING/Marzneshin/">Marzneshin</a></td><td><code>subscription.py</code> — один файл для JSON и Non-JSON подписок, тип роутинга через env var</td></tr>
-<tr><td><a href="ADDON_AUTOROUTING/Remnawave/">Remnawave</a></td><td>Контейнер для автообновления роутинга через API</td></tr>
+<tr><td><a href="ADDON_AUTOROUTING/Remnawave/">Remnawave</a></td><td>GitHub Actions обновляет HAPP/INCY Response Rules через API</td></tr>
 </tbody>
 </table>
 
@@ -188,6 +188,7 @@ GitHub Actions:
 - Проверяет теги апстрим-репозиториев
 - Обновляет URL и таймстемпы в JSON-конфигах
 - Генерирует base64-диплинки для Happ и INCY
+- Синхронизирует DEFAULT-роутинг HAPP и INCY с Response Rules в Remnawave
 - Коммитит изменения автоматически
 
 ## 🔗 Связанные проекты

@@ -25,6 +25,7 @@ jobs:
       incy_default: ${{ steps.deeplinks.outputs.incy_default }}
       incy_whitelist: ${{ steps.deeplinks.outputs.incy_whitelist }}
       incy_json: ${{ steps.deeplinks.outputs.incy_json }}
+      routing_changed: ${{ steps.routing_change.outputs.changed }}
 
     steps:
       - uses: actions/checkout@v6
@@ -186,6 +187,16 @@ jobs:
           printf 'incy://routing/onadd/%s\n' "$default_b64" > INCY/DEFAULT.DEEPLINK
           printf 'incy://routing/onadd/%s\n' "$whitelist_b64" > INCY/WHITELIST.DEEPLINK
           printf 'incy://routing/onadd/%s\n' "$jsonsub_b64" > INCY/JSONSUB.DEEPLINK
+
+      - name: Detect default routing changes
+        id: routing_change
+        shell: bash
+        run: |
+          if git diff --quiet -- HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Commit and push changes
         shell: bash
@@ -381,3 +392,122 @@ jobs:
             echo "Failed: $FAIL_COUNT/$TOTAL servers"
             exit 1
           fi
+
+  sync-remnawave:
+    needs: update
+    if: needs.update.outputs.routing_changed == 'true'
+    runs-on: ubuntu-latest
+
+    env:
+      REMNAWAVE_API_BASE_URL: ${{ vars.REMNAWAVE_API_BASE_URL }}
+      REMNAWAVE_TOKEN: ${{ secrets.REMNAWAVE_TOKEN }}
+      HAPP_DEFAULT: ${{ needs.update.outputs.happ_default }}
+      INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
+
+    steps:
+      - name: Update HAPP and INCY response rules
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${REMNAWAVE_API_BASE_URL:?Set the REMNAWAVE_API_BASE_URL repository variable}"
+          : "${REMNAWAVE_TOKEN:?Set the REMNAWAVE_TOKEN repository secret}"
+
+          SETTINGS_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-settings"
+          AUTH_HEADER="Authorization: Bearer ${REMNAWAVE_TOKEN}"
+
+          CURRENT_SETTINGS="$(
+            curl -fsS \
+              -H "Accept: application/json" \
+              -H "$AUTH_HEADER" \
+              "$SETTINGS_URL"
+          )"
+
+          PATCH_PAYLOAD="$(
+            jq -ce \
+              --arg happ "$HAPP_DEFAULT" \
+              --arg incy "$INCY_DEFAULT" \
+              '
+                (.response // .) as $settings
+                | ($settings.responseRules.rules // []) as $rules
+                | if ([$rules[] | select(.name == "HAPP")] | length) != 1 then
+                    error("expected exactly one HAPP response rule")
+                  elif ([$rules[] | select(.name == "INCY")] | length) != 1 then
+                    error("expected exactly one INCY response rule")
+                  elif ([
+                    $rules[]
+                    | select(.name == "HAPP")
+                    | .responseModifications.headers[]?
+                    | select(((.key // "") | ascii_downcase) == "routing")
+                  ] | length) != 1 then
+                    error("expected exactly one routing header in HAPP response rule")
+                  elif ([
+                    $rules[]
+                    | select(.name == "INCY")
+                    | .responseModifications.headers[]?
+                    | select(((.key // "") | ascii_downcase) == "routing")
+                  ] | length) != 1 then
+                    error("expected exactly one routing header in INCY response rule")
+                  else
+                    {
+                      uuid: $settings.uuid,
+                      responseRules: (
+                        $settings.responseRules
+                        | .rules |= map(
+                            if .name == "HAPP" then
+                              .responseModifications.headers |= map(
+                                if ((.key // "") | ascii_downcase) == "routing"
+                                then .value = $happ
+                                else .
+                                end
+                              )
+                            elif .name == "INCY" then
+                              .responseModifications.headers |= map(
+                                if ((.key // "") | ascii_downcase) == "routing"
+                                then .value = $incy
+                                else .
+                                end
+                              )
+                            else
+                              .
+                            end
+                          )
+                      )
+                    }
+                  end
+              ' <<< "$CURRENT_SETTINGS"
+          )"
+
+          PATCH_RESPONSE="$(
+            curl -fsS \
+              -X PATCH \
+              -H "Accept: application/json" \
+              -H "Content-Type: application/json" \
+              -H "$AUTH_HEADER" \
+              --data "$PATCH_PAYLOAD" \
+              "$SETTINGS_URL"
+          )"
+
+          jq -e \
+            --arg happ "$HAPP_DEFAULT" \
+            --arg incy "$INCY_DEFAULT" \
+            '
+              (.response // .).responseRules.rules as $rules
+              | ([
+                  $rules[]
+                  | select(.name == "HAPP")
+                  | .responseModifications.headers[]?
+                  | select(((.key // "") | ascii_downcase) == "routing")
+                  | .value
+                ] == [$happ])
+                and
+                ([
+                  $rules[]
+                  | select(.name == "INCY")
+                  | .responseModifications.headers[]?
+                  | select(((.key // "") | ascii_downcase) == "routing")
+                  | .value
+                ] == [$incy])
+            ' <<< "$PATCH_RESPONSE" > /dev/null
+
+          echo "Remnawave HAPP and INCY routing updated"
