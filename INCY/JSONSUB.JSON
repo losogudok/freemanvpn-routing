@@ -18,11 +18,40 @@
     "lknpd.nalog.ru": "213.24.64.181"
   },
   "RouteOrder": "block-proxy-direct",
-  "DirectSites": [],
-  "DirectIp": [],
-  "ProxySites": [],
+  "DirectSites": [
+    "geosite:private",
+    "geosite:category-ru",
+    "geosite:whitelist",
+    "geosite:microsoft",
+    "geosite:apple",
+    "geosite:epicgames",
+    "geosite:riot",
+    "geosite:escapefromtarkov",
+    "geosite:steam",
+    "geosite:twitch",
+    "geosite:pinterest",
+    "geosite:faceit",
+    "geosite:blizzard",
+    "geosite:ip-checkers"
+  ],
+  "DirectIp": [
+    "geoip:private",
+    "geoip:direct",
+    "geoip:blizzard"
+  ],
+  "ProxySites": [
+    "geosite:google-play",
+    "geosite:github",
+    "geosite:twitch-ads",
+    "geosite:youtube",
+    "geosite:telegram"
+  ],
   "ProxyIp": [],
-  "BlockSites": [],
+  "BlockSites": [
+    "geosite:win-spy",
+    "geosite:torrent",
+    "geosite:category-ads"
+  ],
   "BlockIp": [],
   "DomainStrategy": "IPIfNonMatch",
   "FakeDNS": "false"
