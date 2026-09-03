@@ -2,6 +2,11 @@ name: Update Routing Configs
 
 on:
   workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Run sync-remnawave even without routing changes'
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -408,7 +413,7 @@ jobs:
 
   sync-remnawave:
     needs: update
-    if: needs.update.outputs.routing_changed == 'true'
+    if: needs.update.outputs.routing_changed == 'true' || inputs.force_sync == true
     runs-on: ubuntu-latest
 
     env:
