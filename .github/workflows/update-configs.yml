@@ -443,27 +443,35 @@ jobs:
               '
                 (.response // .) as $settings
                 | ($settings.responseRules.rules // []) as $rules
-                | if ([$rules[] | select(.name == "HAPP")] | length) != 1 then
-                    error("expected exactly one HAPP response rule")
+                | if $settings.responseRules == null then
+                    error("responseRules is null in subscription settings; create Response Rules in the panel first")
+                  elif ([$rules[] | select(.name == "HAPP")] | length) != 1 then
+                    error("expected exactly one HAPP response rule; found rule names: " + ([$rules[].name] | join(", ") | if . == "" then "<none>" else . end))
                   elif ([$rules[] | select(.name == "INCY")] | length) != 1 then
-                    error("expected exactly one INCY response rule")
+                    error("expected exactly one INCY response rule; found rule names: " + ([$rules[].name] | join(", ") | if . == "" then "<none>" else . end))
                   elif ([
                     $rules[]
                     | select(.name == "HAPP")
                     | .responseModifications.headers[]?
                     | select(((.key // "") | ascii_downcase) == "routing")
                   ] | length) != 1 then
-                    error("expected exactly one routing header in HAPP response rule")
+                    error("expected exactly one routing header in HAPP response rule; found headers: " + ([$rules[] | select(.name == "HAPP") | .responseModifications.headers[]? | .key] | join(", ") | if . == "" then "<none>" else . end))
                   elif ([
                     $rules[]
                     | select(.name == "INCY")
                     | .responseModifications.headers[]?
                     | select(((.key // "") | ascii_downcase) == "routing")
                   ] | length) != 1 then
-                    error("expected exactly one routing header in INCY response rule")
+                    error("expected exactly one routing header in INCY response rule; found headers: " + ([$rules[] | select(.name == "INCY") | .responseModifications.headers[]? | .key] | join(", ") | if . == "" then "<none>" else . end))
                   else
                     {
                       uuid: $settings.uuid,
+                      customResponseHeaders: (
+                        $settings.customResponseHeaders
+                        | if . == null then null
+                          else with_entries(select((.key | ascii_downcase) != "routing"))
+                          end
+                      ),
                       responseRules: (
                         $settings.responseRules
                         | .rules |= map(
@@ -515,12 +523,18 @@ jobs:
                 ] == [$happ])
                 and
                 ([
-                  $rules[]
-                  | select(.name == "INCY")
-                  | .responseModifications.headers[]?
-                  | select(((.key // "") | ascii_downcase) == "routing")
-                  | .value
-                ] == [$incy])
+                    $rules[]
+                    | select(.name == "INCY")
+                    | .responseModifications.headers[]?
+                    | select(((.key // "") | ascii_downcase) == "routing")
+                    | .value
+                  ] == [$incy])
+                and
+                ((.response // .).customResponseHeaders // {}
+                  | keys
+                  | map(ascii_downcase)
+                  | index("routing")
+                  | not)
             ' <<< "$PATCH_RESPONSE" > /dev/null
 
           echo "Remnawave HAPP and INCY routing updated"
