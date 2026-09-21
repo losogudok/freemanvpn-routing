@@ -213,7 +213,10 @@ jobs:
           if [[ "$EVENT_NAME" == "push" ]] \
             && [[ "$EVENT_BEFORE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ ! "$EVENT_BEFORE" =~ ^0+$ ]]; then
-            if ! git diff --quiet "$EVENT_BEFORE" "$EVENT_SHA" -- XRAY_JSON/DEFAULT.JSON; then
+            if ! git diff --quiet "$EVENT_BEFORE" "$EVENT_SHA" -- \
+              XRAY_JSON/DEFAULT.JSON \
+              scripts/render-xray-json.sh \
+              .github/workflows/update-configs.yml; then
               xray_source_changed=true
             fi
           fi
