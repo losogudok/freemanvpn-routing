@@ -20,6 +20,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: update-routing-configs
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -34,6 +38,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Update HAPP configs
         shell: bash
@@ -196,8 +202,24 @@ jobs:
       - name: Detect default routing changes
         id: routing_change
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
-          if git diff --quiet -- HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK; then
+          set -euo pipefail
+
+          xray_source_changed=false
+          if [[ "$EVENT_NAME" == "push" ]] \
+            && [[ "$EVENT_BEFORE" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ ! "$EVENT_BEFORE" =~ ^0+$ ]]; then
+            if ! git diff --quiet "$EVENT_BEFORE" "$EVENT_SHA" -- XRAY_JSON/DEFAULT.JSON; then
+              xray_source_changed=true
+            fi
+          fi
+
+          if git diff --quiet -- HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK \
+            && [[ "$xray_source_changed" == "false" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -423,7 +445,9 @@ jobs:
       INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
 
     steps:
-      - name: Update HAPP and INCY response rules
+      - uses: actions/checkout@v6
+
+      - name: Synchronize Remnawave routing
         shell: bash
         run: |
           set -euo pipefail
@@ -431,8 +455,42 @@ jobs:
           : "${REMNAWAVE_API_BASE_URL:?Set the REMNAWAVE_API_BASE_URL repository variable}"
           : "${REMNAWAVE_TOKEN:?Set the REMNAWAVE_TOKEN repository secret}"
 
+          TEMPLATES_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-templates"
           SETTINGS_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-settings"
           AUTH_HEADER="Authorization: Bearer ${REMNAWAVE_TOKEN}"
+
+          TEMPLATES_LIST="$(
+            curl -fsS \
+              -H "Accept: application/json" \
+              -H "$AUTH_HEADER" \
+              "$TEMPLATES_URL"
+          )"
+
+          TEMPLATE_UUID="$(
+            jq -re '
+              (.response // .) as $resp
+              | $resp.templates as $templates
+              | if ($templates | type) != "array" then
+                  error("unexpected /subscription-templates response shape")
+                end
+              | ([$templates[] | select(.name == "Default Xray JSON")]) as $byName
+              | ([$templates[] | select(.templateType == "XRAY_JSON")]) as $byType
+              | if ($byName | length) == 1 then
+                  $byName[0].uuid
+                elif ($byType | length) == 1 then
+                  $byType[0].uuid
+                else
+                  error("expected exactly one XRAY_JSON subscription template (matched by name or type); found templates: " + ([$templates[] | "\(.name) (\(.templateType))"] | join(", ") | if . == "" then "<none>" else . end))
+                end
+            ' <<< "$TEMPLATES_LIST"
+          )"
+
+          CURRENT_TEMPLATE="$(
+            curl -fsS \
+              -H "Accept: application/json" \
+              -H "$AUTH_HEADER" \
+              "$TEMPLATES_URL/$TEMPLATE_UUID"
+          )"
 
           CURRENT_SETTINGS="$(
             curl -fsS \
@@ -441,7 +499,32 @@ jobs:
               "$SETTINGS_URL"
           )"
 
-          PATCH_PAYLOAD="$(
+          CURRENT_TEMPLATE_JSON="$(
+            jq -ce '
+              (.response // .).templateJson
+              | if type != "object" then
+                  error("unexpected subscription template response shape")
+                else
+                  .
+                end
+            ' <<< "$CURRENT_TEMPLATE"
+          )"
+
+          TEMPLATE_PATCH_PAYLOAD="$(
+            jq -cn \
+              --arg uuid "$TEMPLATE_UUID" \
+              --slurpfile tpl XRAY_JSON/DEFAULT.JSON \
+              '{uuid: $uuid, templateJson: $tpl[0]}'
+          )"
+
+          TEMPLATE_ROLLBACK_PAYLOAD="$(
+            jq -cn \
+              --arg uuid "$TEMPLATE_UUID" \
+              --argjson tpl "$CURRENT_TEMPLATE_JSON" \
+              '{uuid: $uuid, templateJson: $tpl}'
+          )"
+
+          SETTINGS_PATCH_PAYLOAD="$(
             jq -ce \
               --arg happ "$HAPP_DEFAULT" \
               --arg incy "$INCY_DEFAULT" \
@@ -504,13 +587,117 @@ jobs:
               ' <<< "$CURRENT_SETTINGS"
           )"
 
-          PATCH_RESPONSE="$(
+          SETTINGS_ROLLBACK_PAYLOAD="$(
+            jq -ce '
+              (.response // .) as $settings
+              | {
+                  uuid: $settings.uuid,
+                  customResponseHeaders: ($settings.customResponseHeaders // null),
+                  responseRules: $settings.responseRules
+                }
+            ' <<< "$CURRENT_SETTINGS"
+          )"
+
+          CURRENT_SETTINGS_STATE="$(
+            jq -ce '
+              (.response // .)
+              | {
+                  customResponseHeaders: (.customResponseHeaders // null),
+                  responseRules: .responseRules
+                }
+            ' <<< "$CURRENT_SETTINGS"
+          )"
+
+          template_updated=false
+          settings_updated=false
+
+          rollback() {
+            local original_status=$?
+            local rollback_failed=false
+            local rollback_response
+
+            trap - ERR
+            set +e
+
+            if [[ "$settings_updated" == "true" ]]; then
+              if rollback_response="$(
+                curl -fsS \
+                  -X PATCH \
+                  -H "Accept: application/json" \
+                  -H "Content-Type: application/json" \
+                  -H "$AUTH_HEADER" \
+                  --data "$SETTINGS_ROLLBACK_PAYLOAD" \
+                  "$SETTINGS_URL"
+              )" && jq -e \
+                --argjson expected "$CURRENT_SETTINGS_STATE" \
+                '((.response // .) | {
+                  customResponseHeaders: (.customResponseHeaders // null),
+                  responseRules: .responseRules
+                }) == $expected' \
+                <<< "$rollback_response" > /dev/null; then
+                echo "Rolled back Remnawave HAPP and INCY routing" >&2
+              else
+                echo "Failed to roll back Remnawave HAPP and INCY routing" >&2
+                rollback_failed=true
+              fi
+            fi
+
+            if [[ "$template_updated" == "true" ]]; then
+              if rollback_response="$(
+                curl -fsS \
+                  -X PATCH \
+                  -H "Accept: application/json" \
+                  -H "Content-Type: application/json" \
+                  -H "$AUTH_HEADER" \
+                  --data "$TEMPLATE_ROLLBACK_PAYLOAD" \
+                  "$TEMPLATES_URL"
+              )" && jq -e \
+                --argjson expected "$CURRENT_TEMPLATE_JSON" \
+                '(.response // .).templateJson == $expected' \
+                <<< "$rollback_response" > /dev/null; then
+                echo "Rolled back Remnawave XRAY_JSON template" >&2
+              else
+                echo "Failed to roll back Remnawave XRAY_JSON template" >&2
+                rollback_failed=true
+              fi
+            fi
+
+            if [[ "$rollback_failed" == "true" ]]; then
+              echo "Remnawave rollback incomplete; manual reconciliation required" >&2
+            fi
+
+            if (( original_status == 0 )); then
+              original_status=1
+            fi
+            exit "$original_status"
+          }
+
+          trap rollback ERR
+
+          template_updated=true
+          TEMPLATE_PATCH_RESPONSE="$(
             curl -fsS \
               -X PATCH \
               -H "Accept: application/json" \
               -H "Content-Type: application/json" \
               -H "$AUTH_HEADER" \
-              --data "$PATCH_PAYLOAD" \
+              --data "$TEMPLATE_PATCH_PAYLOAD" \
+              "$TEMPLATES_URL"
+          )"
+
+          jq -e \
+            --slurpfile tpl XRAY_JSON/DEFAULT.JSON \
+            '(.response // .).templateJson == $tpl[0]' \
+            <<< "$TEMPLATE_PATCH_RESPONSE" > /dev/null
+
+          settings_updated=true
+          SETTINGS_PATCH_RESPONSE="$(
+            curl -fsS \
+              -X PATCH \
+              -H "Accept: application/json" \
+              -H "Content-Type: application/json" \
+              -H "$AUTH_HEADER" \
+              --data "$SETTINGS_PATCH_PAYLOAD" \
               "$SETTINGS_URL"
           )"
 
@@ -540,6 +727,7 @@ jobs:
                   | map(ascii_downcase)
                   | index("routing")
                   | not)
-            ' <<< "$PATCH_RESPONSE" > /dev/null
+            ' <<< "$SETTINGS_PATCH_RESPONSE" > /dev/null
 
-          echo "Remnawave HAPP and INCY routing updated"
+          trap - ERR
+          echo "Remnawave XRAY_JSON, HAPP and INCY routing updated"

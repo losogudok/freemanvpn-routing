@@ -9,13 +9,13 @@
 <tr>
 <td align="center"><img src="https://img.shields.io/github/downloads/losogudok/freemanvpn-geoip/total.svg" alt="Downloads"> <img src="https://data.jsdelivr.com/v1/package/gh/losogudok/freemanvpn-geoip/badge" alt="jsDelivr"></td>
 <td align="center"><img src="https://img.shields.io/github/downloads/losogudok/freemanvpn-geosite/total.svg" alt="Downloads"> <img src="https://data.jsdelivr.com/v1/package/gh/losogudok/freemanvpn-geosite/badge" alt="jsDelivr"></td>
-<td align="center"><img src="https://img.shields.io/github/stars/losogudok/freemanvpn-routing.svg" alt="Stars"> <img src="https://img.shields.io/badge/Happ-blue.svg" alt="Happ"> <img src="https://img.shields.io/badge/Mihomo-grey.svg" alt="Mihomo"> <img src="https://img.shields.io/badge/Incy-darkgreen.svg" alt="Incy"></td>
+<td align="center"><img src="https://img.shields.io/github/stars/losogudok/freemanvpn-routing.svg" alt="Stars"> <img src="https://img.shields.io/badge/Happ-blue.svg" alt="Happ"> <img src="https://img.shields.io/badge/Incy-darkgreen.svg" alt="Incy"> <img src="https://img.shields.io/badge/v2RayTun-orange.svg" alt="v2RayTun"> <img src="https://img.shields.io/badge/Mihomo-grey.svg" alt="Mihomo"></td>
 </tr>
 </table>
 
 # 🚀 FreemanVPN Routing
 
-**Готовые конфигурации маршрутизации для [Happ](https://happ.su), [INCY](https://incy.cc) и [Mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta, Clash Mi и др.)**
+**Готовые конфигурации маршрутизации для [Happ](https://happ.su), [INCY](https://incy.cc), [v2RayTun](https://github.com/2dust/v2rayAndroid) и [Mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta, Clash Mi и др.)**
 
 > Быстрый и универсальный роутинг: без дыр и утечки вашего сервера, "хирургическая" фильтрация, все нужное — разблокировано, а ненужное — заблокировано
 
@@ -60,6 +60,32 @@
 <tr><td>📊 JSONSUB.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/INCY/JSONSUB.JSON">Просмотр</a></td><td>JSON-конфиг роутинга</td></tr>
 </tbody>
 </table>
+
+## 📱 Установка для v2RayTun
+
+<table width="100%">
+<thead><tr><th align="left">Способ</th><th align="left">Ссылка</th><th align="left">Описание</th></tr></thead>
+<tbody>
+<tr><td colspan="3"><b>DEFAULT</b> — полный профиль (получается автоматически из подписки): RU/BY direct, YouTube/Telegram/GitHub через прокси, реклама блокируется</td></tr>
+<tr><td>🔄 По подписке</td><td>—</td><td>Обновите подписку в v2RayTun — приложение получит полную Xray JSON-конфигурацию (DNS + роутинг) автоматически</td></tr>
+<tr><td>📊 DEFAULT.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/XRAY_JSON/DEFAULT.JSON">Просмотр</a></td><td>Исходник конфига (публикуется также в панели Remnawave)</td></tr>
+<tr><td colspan="3"><b>WHITELIST</b> — direct только для сервисов и IP из белых списков РФ; всё остальное через прокси. Только ручной импорт</td></tr>
+<tr><td>📊 WHITELIST.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/XRAY_JSON/WHITELIST.JSON">Просмотр</a></td><td>Импорт конфига в v2RayTun</td></tr>
+<tr><td colspan="3"><b>JSONSUB</b> — как DEFAULT, плюс Microsoft direct. Только ручной импорт</td></tr>
+<tr><td>📊 JSONSUB.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/XRAY_JSON/JSONSUB.JSON">Просмотр</a></td><td>Импорт конфига в v2RayTun</td></tr>
+</tbody>
+</table>
+
+> [!IMPORTANT]
+> ### ⚙️ Обязательная настройка geo-файлов
+> Формат Xray JSON не может передавать URL geo-файлов внутри конфига. Скачайте и укажите кастомные geo-файлы FreemanVPN вручную в настройках v2RayTun (Настройки → Geoip Url / Geosite Url):
+> - **Geoip Url:** `https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat`
+> - **Geosite Url:** `https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat`
+>
+> Без этого правила `geoip:`/`geosite:` в конфиге работать не будут.
+
+> [!NOTE]
+> **DNS** — конфиг уже содержит DoH Google (8.8.8.8) и Яндекс (77.88.8.8) с раздельным резолвингом и статикой для `lkfl2.nalog.ru` / `lknpd.nalog.ru` — идентично профилям Happ и INCY, дополнительная настройка не требуется. При ручном импорте WHITELIST/JSONSUB v2RayTun добавит ваш активный сервер в конфиг сам.
 
 ## 💻 Установка для Mihomo (Clash Meta)
 
@@ -173,7 +199,7 @@
 <tr><td><a href="https://github.com/losogudok/3x-ui">🚀 3x-ui</a></td><td>Кастомный форк с встроенным FreemanVPN-роутингом, UI-выбором профиля и автообновлением geo-файлов</td></tr>
 <tr><td><a href="ADDON_AUTOROUTING/Marzban/">Marzban</a></td><td><code>subscription.py</code> — один файл для JSON и Non-JSON подписок, тип роутинга через env var</td></tr>
 <tr><td><a href="ADDON_AUTOROUTING/Marzneshin/">Marzneshin</a></td><td><code>subscription.py</code> — один файл для JSON и Non-JSON подписок, тип роутинга через env var</td></tr>
-<tr><td><a href="ADDON_AUTOROUTING/Remnawave/">Remnawave</a></td><td>GitHub Actions обновляет HAPP/INCY Response Rules через API</td></tr>
+<tr><td><a href="ADDON_AUTOROUTING/Remnawave/">Remnawave</a></td><td>GitHub Actions обновляет HAPP/INCY Response Rules и XRAY_JSON шаблон через API</td></tr>
 </tbody>
 </table>
 
@@ -188,7 +214,7 @@ GitHub Actions:
 - Проверяет теги апстрим-репозиториев
 - Обновляет URL и таймстемпы в JSON-конфигах
 - Генерирует base64-диплинки для Happ и INCY
-- Синхронизирует DEFAULT-роутинг HAPP и INCY с Response Rules в Remnawave
+- Синхронизирует DEFAULT-роутинг HAPP, INCY и XRAY_JSON шаблон v2RayTun с Remnawave (все цели обновляются вместе)
 - Коммитит изменения автоматически
 
 ## 🔗 Связанные проекты

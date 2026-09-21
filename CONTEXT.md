@@ -12,14 +12,18 @@ _Avoid_: Routing configuration, client rules
 A client-specific deeplink carried in a subscription response header and adopted when the client refreshes its subscription.
 _Avoid_: Client update, routing URL
 
+**Client Routing Template**:
+A full client configuration served by Remnawave as a subscription response body, carrying DNS and routing policy for clients that cannot adopt a Client Routing Payload.
+_Avoid_: Xray JSON config, stub template
+
 **Default Client Routing Profiles**:
-The standard HAPP and INCY routing policies distributed to every matching subscription request.
+The standard HAPP, INCY and v2RayTun routing policies distributed to every matching subscription request.
 _Avoid_: Selected profiles, INCY profile, HAPP profile
 
 **Routing Change**:
-A byte-for-byte change to either generated Default Client Routing Profile payload.
+A byte-for-byte change to any generated Default Client Routing Profile artifact.
 _Avoid_: Repository change, configuration change
 
 **Routing Synchronization**:
-The coordinated replacement of both HAPP and INCY Client Routing Payloads in the authoritative Response Rule Set after a Routing Change. Both targets are updated together or neither is changed.
+The coordinated replacement of every distributed routing artifact — the HAPP and INCY Client Routing Payloads and the Client Routing Template — after a Routing Change. All targets are updated together or neither is changed.
 _Avoid_: Client update, panel deployment
