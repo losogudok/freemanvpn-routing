@@ -455,6 +455,9 @@ jobs:
           : "${REMNAWAVE_API_BASE_URL:?Set the REMNAWAVE_API_BASE_URL repository variable}"
           : "${REMNAWAVE_TOKEN:?Set the REMNAWAVE_TOKEN repository secret}"
 
+          RENDERED_TEMPLATE="${RUNNER_TEMP}/xray-default.json"
+          scripts/render-xray-json.sh XRAY_JSON/DEFAULT.JSON "$RENDERED_TEMPLATE"
+
           TEMPLATES_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-templates"
           SETTINGS_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-settings"
           AUTH_HEADER="Authorization: Bearer ${REMNAWAVE_TOKEN}"
@@ -499,30 +502,29 @@ jobs:
               "$SETTINGS_URL"
           )"
 
-          CURRENT_TEMPLATE_JSON="$(
-            jq -ce '
+          CURRENT_TEMPLATE_JSON_FILE="${RUNNER_TEMP}/current-xray-template.json"
+          jq -ce '
               (.response // .).templateJson
               | if type != "object" then
                   error("unexpected subscription template response shape")
                 else
                   .
                 end
-            ' <<< "$CURRENT_TEMPLATE"
-          )"
+            ' <<< "$CURRENT_TEMPLATE" > "$CURRENT_TEMPLATE_JSON_FILE"
 
-          TEMPLATE_PATCH_PAYLOAD="$(
-            jq -cn \
-              --arg uuid "$TEMPLATE_UUID" \
-              --slurpfile tpl XRAY_JSON/DEFAULT.JSON \
-              '{uuid: $uuid, templateJson: $tpl[0]}'
-          )"
+          TEMPLATE_PATCH_PAYLOAD_FILE="${RUNNER_TEMP}/xray-template-patch.json"
+          jq -cn \
+            --arg uuid "$TEMPLATE_UUID" \
+            --slurpfile tpl "$RENDERED_TEMPLATE" \
+            '{uuid: $uuid, templateJson: $tpl[0]}' \
+            > "$TEMPLATE_PATCH_PAYLOAD_FILE"
 
-          TEMPLATE_ROLLBACK_PAYLOAD="$(
-            jq -cn \
-              --arg uuid "$TEMPLATE_UUID" \
-              --argjson tpl "$CURRENT_TEMPLATE_JSON" \
-              '{uuid: $uuid, templateJson: $tpl}'
-          )"
+          TEMPLATE_ROLLBACK_PAYLOAD_FILE="${RUNNER_TEMP}/xray-template-rollback.json"
+          jq -cn \
+            --arg uuid "$TEMPLATE_UUID" \
+            --slurpfile tpl "$CURRENT_TEMPLATE_JSON_FILE" \
+            '{uuid: $uuid, templateJson: $tpl[0]}' \
+            > "$TEMPLATE_ROLLBACK_PAYLOAD_FILE"
 
           SETTINGS_PATCH_PAYLOAD="$(
             jq -ce \
@@ -649,11 +651,11 @@ jobs:
                   -H "Accept: application/json" \
                   -H "Content-Type: application/json" \
                   -H "$AUTH_HEADER" \
-                  --data "$TEMPLATE_ROLLBACK_PAYLOAD" \
+                  --data-binary "@$TEMPLATE_ROLLBACK_PAYLOAD_FILE" \
                   "$TEMPLATES_URL"
               )" && jq -e \
-                --argjson expected "$CURRENT_TEMPLATE_JSON" \
-                '(.response // .).templateJson == $expected' \
+                --slurpfile expected "$CURRENT_TEMPLATE_JSON_FILE" \
+                '(.response // .).templateJson == $expected[0]' \
                 <<< "$rollback_response" > /dev/null; then
                 echo "Rolled back Remnawave XRAY_JSON template" >&2
               else
@@ -681,12 +683,12 @@ jobs:
               -H "Accept: application/json" \
               -H "Content-Type: application/json" \
               -H "$AUTH_HEADER" \
-              --data "$TEMPLATE_PATCH_PAYLOAD" \
+              --data-binary "@$TEMPLATE_PATCH_PAYLOAD_FILE" \
               "$TEMPLATES_URL"
           )"
 
           jq -e \
-            --slurpfile tpl XRAY_JSON/DEFAULT.JSON \
+            --slurpfile tpl "$RENDERED_TEMPLATE" \
             '(.response // .).templateJson == $tpl[0]' \
             <<< "$TEMPLATE_PATCH_RESPONSE" > /dev/null
 

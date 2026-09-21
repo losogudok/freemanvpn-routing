@@ -68,7 +68,7 @@
 <tbody>
 <tr><td colspan="3"><b>DEFAULT</b> — полный профиль (получается автоматически из подписки): RU/BY direct, YouTube/Telegram/GitHub через прокси, реклама блокируется</td></tr>
 <tr><td>🔄 По подписке</td><td>—</td><td>Обновите подписку в v2RayTun — приложение получит полную Xray JSON-конфигурацию (DNS + роутинг) автоматически</td></tr>
-<tr><td>📊 DEFAULT.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/XRAY_JSON/DEFAULT.JSON">Просмотр</a></td><td>Исходник конфига (публикуется также в панели Remnawave)</td></tr>
+<tr><td>📊 DEFAULT.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/XRAY_JSON/DEFAULT.JSON">Просмотр</a></td><td>Исходный шаблон; перед публикацией в Remnawave geo-категории разворачиваются в обычные домены и CIDR</td></tr>
 <tr><td colspan="3"><b>WHITELIST</b> — direct только для сервисов и IP из белых списков РФ; всё остальное через прокси. Только ручной импорт</td></tr>
 <tr><td>📊 WHITELIST.JSON</td><td><a href="https://raw.githubusercontent.com/losogudok/freemanvpn-routing/refs/heads/main/XRAY_JSON/WHITELIST.JSON">Просмотр</a></td><td>Импорт конфига в v2RayTun</td></tr>
 <tr><td colspan="3"><b>JSONSUB</b> — как DEFAULT, плюс Microsoft direct. Только ручной импорт</td></tr>
@@ -77,12 +77,12 @@
 </table>
 
 > [!IMPORTANT]
-> ### ⚙️ Обязательная настройка geo-файлов
-> Формат Xray JSON не может передавать URL geo-файлов внутри конфига. Скачайте и укажите кастомные geo-файлы FreemanVPN вручную в настройках v2RayTun (Настройки → Geoip Url / Geosite Url):
+> ### ⚙️ Geo-файлы при ручном импорте
+> Конфиг, полученный по подписке Remnawave, уже содержит развёрнутые правила FreemanVPN и не требует настройки geo-файлов. Для ручного импорта файлов из `XRAY_JSON/` укажите кастомные geo-файлы в настройках v2RayTun (Настройки → Geoip Url / Geosite Url):
 > - **Geoip Url:** `https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat`
 > - **Geosite Url:** `https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat`
 >
-> Без этого правила `geoip:`/`geosite:` в конфиге работать не будут.
+> Без этого правила `geoip:`/`geosite:` в файлах для ручного импорта работать не будут.
 
 > [!NOTE]
 > **DNS** — конфиг уже содержит DoH Google (8.8.8.8) и Яндекс (77.88.8.8) с раздельным резолвингом и статикой для `lkfl2.nalog.ru` / `lknpd.nalog.ru` — идентично профилям Happ и INCY, дополнительная настройка не требуется. При ручном импорте WHITELIST/JSONSUB v2RayTun добавит ваш активный сервер в конфиг сам.
@@ -214,7 +214,8 @@ GitHub Actions:
 - Проверяет теги апстрим-репозиториев
 - Обновляет URL и таймстемпы в JSON-конфигах
 - Генерирует base64-диплинки для Happ и INCY
-- Синхронизирует DEFAULT-роутинг HAPP, INCY и XRAY_JSON шаблон v2RayTun с Remnawave (все цели обновляются вместе)
+- Разворачивает FreemanVPN geo-категории в домены/CIDR и синхронизирует самодостаточный XRAY_JSON шаблон v2RayTun с Remnawave
+- Синхронизирует DEFAULT-роутинг HAPP, INCY и XRAY_JSON с Remnawave как одну транзакцию
 - Коммитит изменения автоматически
 
 ## 🔗 Связанные проекты
