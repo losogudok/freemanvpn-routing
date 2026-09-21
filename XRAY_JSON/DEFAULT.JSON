@@ -1,13 +1,6 @@
 {
   "remnawave": {
-    "injectHosts": [
-      {
-        "selector": {
-          "type": "sameTagAsRecipient"
-        },
-        "tagPrefix": "proxy"
-      }
-    ]
+    "addVirtualHostAsOutbound": true
   },
   "dns": {
     "servers": [
