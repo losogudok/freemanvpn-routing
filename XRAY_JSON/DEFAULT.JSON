@@ -72,8 +72,7 @@
           "geosite:pinterest",
           "geosite:faceit",
           "geosite:blizzard",
-          "geosite:ip-checkers",
-          "geosite:spotify"
+          "geosite:ip-checkers"
         ],
         "outboundTag": "direct"
       },
