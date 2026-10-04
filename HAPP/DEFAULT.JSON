@@ -31,7 +31,8 @@
     "geosite:pinterest",
     "geosite:faceit",
     "geosite:blizzard",
-    "geosite:ip-checkers"
+    "geosite:ip-checkers",
+    "geosite:spotify"
   ],
   "DirectIp": [
     "geoip:private",
