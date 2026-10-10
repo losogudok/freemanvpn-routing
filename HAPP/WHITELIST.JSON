@@ -10,9 +10,9 @@
   "DomesticDNSType": "DoH",
   "DomesticDNSDomain": "https://77.88.8.8/dns-query",
   "DomesticDNSIP": "77.88.8.8",
-  "Geoipurl": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@202610091025/release/geoip.dat",
+  "Geoipurl": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@202610100943/release/geoip.dat",
   "Geositeurl": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@202610042122/release/geosite.dat",
-  "LastUpdated": "1791541590",
+  "LastUpdated": "1791625498",
   "DnsHosts": {
     "lkfl2.nalog.ru": "213.24.64.175",
     "lknpd.nalog.ru": "213.24.64.181"
