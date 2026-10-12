@@ -30,6 +30,17 @@ Remnawave `XRAY_JSON` subscription template. Keep its name distinct from
 virtual template from the same expanded geodata. Both templates and the
 HAPP/INCY routing headers are synchronized together, with rollback on failure.
 
+Set the GitHub repository variable `REMNAWAVE_DEFAULT_TEMPLATE_UUID` to the
+default template's UUID so its panel name can be arbitrary. Without that
+variable, the script selects `Default Xray JSON`, or the sole JSON template;
+multiple templates with another default name require the UUID.
+The current panel assignments supplied by the owner are:
+
+| Repository variable | Panel template | UUID |
+| --- | --- | --- |
+| `REMNAWAVE_DEFAULT_TEMPLATE_UUID` | `Default` | `f0b0e4cf-ac6c-4366-915f-3b89ff3b9615` |
+| `REMNAWAVE_LEASTLOAD_TEMPLATE_UUID` | `Auto test` | `12270029-8d43-4842-93c9-013adeaf1fde` |
+
 The synchronization script finds the existing virtual template by the
 balancer tag and injected-host prefixes in the settings file, independent
 of its name. A missing or ambiguous match aborts before any write. If you

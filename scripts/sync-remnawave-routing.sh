@@ -28,16 +28,26 @@ get_json() {
 
 TEMPLATES_LIST="$(get_json "$TEMPLATES_URL")"
 TEMPLATE_UUID="$(
-  jq -re '
+  jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" '
     (.response // .).templates
     | if type != "array" then error("unexpected subscription templates response") else . end
     | [.[] | select(.templateType == "XRAY_JSON")] as $templates
     | [$templates[] | select(.name == "Default Xray JSON")] as $named
-    | if ($named | length) == 1 then $named[0].uuid
+    | [$templates[] | select(.uuid == $pinned)] as $byUuid
+    | if $pinned != "" then
+        if ($byUuid | length) == 1 then $byUuid[0].uuid
+        else error("REMNAWAVE_DEFAULT_TEMPLATE_UUID does not identify one XRAY_JSON template") end
+      elif ($named | length) == 1 then $named[0].uuid
       elif ($named | length) == 0 and ($templates | length) == 1 then $templates[0].uuid
-      else error("cannot uniquely identify Default Xray JSON template") end
+      else error("cannot uniquely identify default template; set REMNAWAVE_DEFAULT_TEMPLATE_UUID. XRAY_JSON templates: "
+        + ([$templates[] | "\(.name) (\(.uuid))"] | join(", "))) end
   ' <<< "$TEMPLATES_LIST"
 )"
+
+if [[ "$TEMPLATE_UUID" == "${REMNAWAVE_LEASTLOAD_TEMPLATE_UUID:-}" ]]; then
+  echo "Default and virtual template UUIDs must be different" >&2
+  exit 1
+fi
 
 # List responses omit content. Inspect each JSON template to find the pool,
 # rejecting absent/ambiguous matches before any PATCH. An optional UUID pins it.

@@ -139,10 +139,11 @@ class SyncTest(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
-    def run_sync(self, pinned=""):
+    def run_sync(self, pinned="", default_pinned=""):
         env = {**os.environ, "REMNAWAVE_API_BASE_URL": f"http://127.0.0.1:{self.server.server_port}/api",
                "REMNAWAVE_TOKEN": "fixture-token", "HAPP_DEFAULT": "new-happ", "INCY_DEFAULT": "new-incy",
                "RUNNER_TEMP": str(self.root / "runner"), "REMNAWAVE_LEASTLOAD_TEMPLATE_UUID": pinned,
+               "REMNAWAVE_DEFAULT_TEMPLATE_UUID": default_pinned,
                "TEST_RENDER_LOG": str(self.root / "renders.log")}
         return subprocess.run(["bash", str(self.root / "scripts/sync-remnawave-routing.sh")],
                               env=env, capture_output=True, text=True, timeout=20)
@@ -163,6 +164,27 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(rules[0]["responseType"], "XRAY_JSON")
         self.assertEqual(rules[0]["responseModifications"]["headers"][0]["value"], "new-happ")
         self.assertNotIn("routing", self.settings["customResponseHeaders"])
+
+    def test_renamed_default_with_virtual_template_is_selected(self):
+        self.templates[DEFAULT_UUID]["name"] = "Default"
+        self.templates[POOL_UUID]["name"] = "Auto test"
+        self.templates[DEFAULT_UUID]["templateJson"] = copy.deepcopy(BASE)
+        result = self.run_sync(POOL_UUID, DEFAULT_UUID)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.patches, [DEFAULT_UUID, POOL_UUID, "settings"])
+
+    def test_missing_pinned_default_aborts_before_writing(self):
+        self.assertNotEqual(self.run_sync(POOL_UUID, OTHER_UUID).returncode, 0)
+        self.assertEqual(self.patches, [])
+
+    def test_pinned_default_must_be_xray_json(self):
+        self.templates[DEFAULT_UUID]["templateType"] = "MIHOMO"
+        self.assertNotEqual(self.run_sync(POOL_UUID, DEFAULT_UUID).returncode, 0)
+        self.assertEqual(self.patches, [])
+
+    def test_same_uuid_for_both_templates_aborts_before_writing(self):
+        self.assertNotEqual(self.run_sync(POOL_UUID, POOL_UUID).returncode, 0)
+        self.assertEqual(self.patches, [])
 
     def test_uncertain_writes_and_mismatched_responses_roll_back(self):
         for failure, expected in [

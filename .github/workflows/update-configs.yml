@@ -448,6 +448,7 @@ jobs:
     env:
       REMNAWAVE_API_BASE_URL: ${{ vars.REMNAWAVE_API_BASE_URL }}
       REMNAWAVE_TOKEN: ${{ secrets.REMNAWAVE_TOKEN }}
+      REMNAWAVE_DEFAULT_TEMPLATE_UUID: ${{ vars.REMNAWAVE_DEFAULT_TEMPLATE_UUID }}
       REMNAWAVE_LEASTLOAD_TEMPLATE_UUID: ${{ vars.REMNAWAVE_LEASTLOAD_TEMPLATE_UUID }}
       HAPP_DEFAULT: ${{ needs.update.outputs.happ_default }}
       INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
