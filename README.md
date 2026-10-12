@@ -63,6 +63,8 @@
 
 ## 📱 Установка для v2RayTun
 
+Виртуальный хост с автоматическим выбором сервера: [генерация YouTube Auto-шаблона из DEFAULT](docs/runbooks/xray-json-least-load.md).
+
 <table width="100%">
 <thead><tr><th align="left">Способ</th><th align="left">Ссылка</th><th align="left">Описание</th></tr></thead>
 <tbody>
