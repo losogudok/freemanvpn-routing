@@ -61,6 +61,9 @@
 </tbody>
 </table>
 
+Для INCY используется `XRAY_BASE64`: список отдельных серверов плюс заголовок `routing` из [`INCY/DEFAULT.DEEPLINK`](INCY/DEFAULT.DEEPLINK). Правило `INCY` в [`response_rules.json`](response_rules.json) исключает только хосты с новым тегом `INCY_EXCLUDE`; добавьте этот тег только виртуальному хосту, сохранив его для остальных клиентов. `excludeHostsByTags` поддерживается в Remnawave 3.4.5. Happ сохраняет `XRAY_JSON`. Пользователь выбирает отдельный сервер; кастомный балансировщик INCY не получает. Настройка панели и проверка — в [инструкции](docs/runbooks/incy-server-links.md).
+
+
 ## 📱 Установка для v2RayTun
 
 Виртуальный хост с автоматическим выбором сервера: [генерация YouTube Auto-шаблона из DEFAULT](docs/runbooks/xray-json-least-load.md).

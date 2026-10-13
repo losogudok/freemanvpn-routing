@@ -76,6 +76,9 @@ class SyncTest(unittest.TestCase):
                              {"name": "HAPP", "responseType": "XRAY_JSON", "responseModifications": {
                                  "headers": [{"key": "routing", "value": "old-happ"}]}},
                              {"name": "INCY", "responseType": "XRAY_BASE64", "responseModifications": {
+                                 "applyHeadersToEnd": True,
+                                 "ignoreServeJsonAtBaseSubscription": True,
+                                 "excludeHostsByTags": ["INCY_EXCLUDE"],
                                  "headers": [{"key": "routing", "value": "old-incy"}]}},
                          ]}}
         self.initial_templates = copy.deepcopy(self.templates)
@@ -163,6 +166,13 @@ class SyncTest(unittest.TestCase):
         rules = self.settings["responseRules"]["rules"]
         self.assertEqual(rules[0]["responseType"], "XRAY_JSON")
         self.assertEqual(rules[0]["responseModifications"]["headers"][0]["value"], "new-happ")
+        self.assertEqual(rules[1]["responseType"], "XRAY_BASE64")
+        self.assertEqual(rules[1]["responseModifications"], {
+            "applyHeadersToEnd": True,
+            "ignoreServeJsonAtBaseSubscription": True,
+            "excludeHostsByTags": ["INCY_EXCLUDE"],
+            "headers": [{"key": "routing", "value": "new-incy"}],
+        })
         self.assertNotIn("routing", self.settings["customResponseHeaders"])
 
     def test_renamed_default_with_virtual_template_is_selected(self):
