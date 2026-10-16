@@ -166,6 +166,7 @@ class SyncTest(unittest.TestCase):
         rules = self.settings["responseRules"]["rules"]
         self.assertEqual(rules[0]["responseType"], "XRAY_JSON")
         self.assertEqual(rules[0]["responseModifications"]["headers"][0]["value"], "new-happ")
+        self.assertIn({"key": "ping-type", "value": "tcp"}, rules[0]["responseModifications"]["headers"])
         self.assertEqual(rules[1]["responseType"], "XRAY_BASE64")
         self.assertEqual(rules[1]["responseModifications"], {
             "applyHeadersToEnd": True,
@@ -174,6 +175,32 @@ class SyncTest(unittest.TestCase):
             "headers": [{"key": "routing", "value": "new-incy"}],
         })
         self.assertNotIn("routing", self.settings["customResponseHeaders"])
+
+    def test_happ_ping_override_replaces_duplicates_and_survives_repeated_sync(self):
+        headers = self.settings["responseRules"]["rules"][0]["responseModifications"]["headers"]
+        headers.extend([
+            {"key": "Ping-Type", "value": "proxy-head"},
+            {"key": "ping-type", "value": "proxy"},
+            {"key": "providerid", "value": "existing-provider-id"},
+            {"key": "support-url", "value": "https://support.invalid"},
+        ])
+        other_rules = copy.deepcopy(self.settings["responseRules"]["rules"][1:])
+        # Only INCY's routing value is managed by the sync.
+        other_rules[0]["responseModifications"]["headers"][0]["value"] = "new-incy"
+        local_rules = json.loads((REPO / "response_rules.json").read_text())["rules"]
+        expected_ping = [h for r in local_rules if r["name"] == "HAPP"
+                         for h in r["responseModifications"]["headers"] if h["key"].lower() == "ping-type"]
+        self.assertEqual(expected_ping, [{"key": "ping-type", "value": "tcp"}])
+        for _ in range(2):
+            result = self.run_sync()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rules = self.settings["responseRules"]["rules"]
+            actual = rules[0]["responseModifications"]["headers"]
+            self.assertEqual([h for h in actual if h["key"].lower() == "ping-type"], expected_ping)
+            self.assertIn({"key": "providerid", "value": "existing-provider-id"}, actual)
+            self.assertIn({"key": "support-url", "value": "https://support.invalid"}, actual)
+            self.assertEqual(rules[0]["responseType"], "XRAY_JSON")
+            self.assertEqual(rules[1:], other_rules)
 
     def test_renamed_default_with_virtual_template_is_selected(self):
         self.templates[DEFAULT_UUID]["name"] = "Default"
