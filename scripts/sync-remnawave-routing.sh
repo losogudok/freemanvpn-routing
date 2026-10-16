@@ -151,17 +151,11 @@ SETTINGS_PATCH_PAYLOAD="$(
               $settings.responseRules
               | .rules |= map(
                   if .name == "HAPP" then
-                    # Remote app setting: replace stale/duplicate ping headers
-                    # so existing subscribers receive TCP on their next refresh.
-                    .responseModifications.headers |= (
-                      map(select(((.key // "") | ascii_downcase) != "ping-type"))
-                      | map(
-                          if ((.key // "") | ascii_downcase) == "routing"
-                          then .value = $happ
-                          else .
-                          end
-                        )
-                      + [{key: "ping-type", value: "tcp"}]
+                    .responseModifications.headers |= map(
+                      if ((.key // "") | ascii_downcase) == "routing"
+                      then .value = $happ
+                      else .
+                      end
                     )
                   elif .name == "INCY" then
                     .responseModifications.headers |= map(
