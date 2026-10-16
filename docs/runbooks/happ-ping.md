@@ -7,7 +7,8 @@ The operator also confirmed that the Gstatic page loads in a browser through
 the VPN on mobile data. This establishes browser access, not that HEAD works
 through the temporary core used by Happ's ping helper.
 The test URL controls Happ's UI ping. It is separate from the Auto profile's
-YouTube burst observatory.
+burst observatory, which now also probes Gstatic. The two checks are configured
+independently.
 
 ## Provider management is not a free workaround
 

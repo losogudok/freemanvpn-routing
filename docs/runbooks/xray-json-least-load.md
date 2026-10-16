@@ -131,13 +131,13 @@ imported profile is temporary: subscription refresh replaces it.
 
 The client probes all injected outbounds at an average interval of one
 minute, retaining three recent results, with a five-second timeout and
-`https://www.youtube.com/generate_204` as the destination. The default
+`https://www.gstatic.com/generate_204` as the destination. The default
 HTTP method is HEAD. `leastPing` selects the alive candidate with the
 smallest observed delay. There are no leastLoad-specific settings such
 as `expected`, `maxRTT`, or `tolerance` in this variant. Existing
 connections are not moved when selection changes.
 
-This measures response latency to YouTube's web endpoint through each
+This measures response latency to Gstatic's connectivity endpoint through each
 server. It does not measure sustained video throughput or every
 `googlevideo.com` CDN route, so a fast probe is not a guarantee of faster
 video playback. The earlier leastLoad variant prioritized latency
