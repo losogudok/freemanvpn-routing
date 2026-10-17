@@ -39286,7 +39286,7 @@
       "auto-proxy"
     ],
     "pingConfig": {
-      "destination": "https://www.gstatic.com/generate_204",
+      "destination": "https://www.youtube.com/generate_204",
       "connectivity": "",
       "interval": "1m",
       "sampling": 3,
