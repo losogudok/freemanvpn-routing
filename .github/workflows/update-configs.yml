@@ -216,10 +216,13 @@ jobs:
             if ! git diff --quiet "$EVENT_BEFORE" "$EVENT_SHA" -- \
               XRAY_JSON/DEFAULT.JSON \
               XRAY_JSON/LEASTLOAD.settings.json \
+              response_rules.json \
               scripts/render-xray-json.sh \
               scripts/render-xray-least-load.sh \
+              scripts/render-v2raytun.py \
               scripts/sync-remnawave-routing.sh \
               scripts/tests/test_remnawave_sync.py \
+              scripts/tests/test_v2raytun.py \
               .github/workflows/update-configs.yml; then
               xray_source_changed=true
             fi
@@ -450,6 +453,8 @@ jobs:
       REMNAWAVE_TOKEN: ${{ secrets.REMNAWAVE_TOKEN }}
       REMNAWAVE_DEFAULT_TEMPLATE_UUID: ${{ vars.REMNAWAVE_DEFAULT_TEMPLATE_UUID }}
       REMNAWAVE_LEASTLOAD_TEMPLATE_UUID: ${{ vars.REMNAWAVE_LEASTLOAD_TEMPLATE_UUID }}
+      REMNAWAVE_V2RAYTUN_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_TEMPLATE_UUID }}
+      REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID }}
       HAPP_DEFAULT: ${{ needs.update.outputs.happ_default }}
       INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
 
@@ -457,8 +462,8 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Test Remnawave synchronization
-        run: python3 scripts/tests/test_remnawave_sync.py
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
-      - name: Synchronize Remnawave routing
+      - name: Build and synchronize shared and compact v2rayTun routing
         shell: bash
         run: bash scripts/sync-remnawave-routing.sh

@@ -1,6 +1,7 @@
 """Exercise the real sync script against a local Remnawave HTTP fixture."""
 
 import copy
+import base64
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,8 @@ REPO = Path(__file__).resolve().parents[2]
 DEFAULT_UUID = "11111111-1111-4111-8111-111111111111"
 POOL_UUID = "22222222-2222-4222-8222-222222222222"
 OTHER_UUID = "33333333-3333-4333-8333-333333333333"
+COMPACT_UUID = "44444444-4444-4444-8444-444444444444"
+COMPACT_AUTO_UUID = "55555555-5555-4555-8555-555555555555"
 BASE = {
     "remnawave": {"addVirtualHostAsOutbound": True},
     "dns": {"hosts": {"fresh-policy.invalid": "192.0.2.123"}},
@@ -52,7 +55,7 @@ class SyncTest(unittest.TestCase):
         (self.root / "scripts").mkdir()
         (self.root / "XRAY_JSON").mkdir()
         (self.root / "runner").mkdir()
-        for name in ["sync-remnawave-routing.sh", "render-xray-least-load.sh"]:
+        for name in ["sync-remnawave-routing.sh", "render-xray-least-load.sh", "render-v2raytun.py"]:
             shutil.copy(REPO / "scripts" / name, self.root / "scripts" / name)
             (self.root / "scripts" / name).chmod(0o755)
         # Isolate only the network geodata download. Pool rendering, target
@@ -62,6 +65,7 @@ class SyncTest(unittest.TestCase):
         renderer.chmod(0o755)
         (self.root / "XRAY_JSON/DEFAULT.JSON").write_text(json.dumps(BASE))
         (self.root / "XRAY_JSON/LEASTLOAD.settings.json").write_text(json.dumps(POOL_SETTINGS))
+        shutil.copy(REPO / "response_rules.json", self.root / "response_rules.json")
         old_pool = copy.deepcopy(POOL_SETTINGS)
         old_pool["inbounds"] = copy.deepcopy(BASE["inbounds"])
         old_pool["inbounds"][1]["port"] = 10810
@@ -85,6 +89,8 @@ class SyncTest(unittest.TestCase):
         self.initial_settings = copy.deepcopy(self.settings)
         self.patches = []
         self.failure = None
+        self.happ_payload = "new-happ"
+        self.compact_pins = ("", "")
         self.rollback_failure = None
         test = self
 
@@ -144,12 +150,140 @@ class SyncTest(unittest.TestCase):
 
     def run_sync(self, pinned="", default_pinned=""):
         env = {**os.environ, "REMNAWAVE_API_BASE_URL": f"http://127.0.0.1:{self.server.server_port}/api",
-               "REMNAWAVE_TOKEN": "fixture-token", "HAPP_DEFAULT": "new-happ", "INCY_DEFAULT": "new-incy",
+               "REMNAWAVE_TOKEN": "fixture-token", "HAPP_DEFAULT": self.happ_payload, "INCY_DEFAULT": "new-incy",
                "RUNNER_TEMP": str(self.root / "runner"), "REMNAWAVE_LEASTLOAD_TEMPLATE_UUID": pinned,
                "REMNAWAVE_DEFAULT_TEMPLATE_UUID": default_pinned,
+               "REMNAWAVE_V2RAYTUN_TEMPLATE_UUID": self.compact_pins[0],
+               "REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID": self.compact_pins[1],
                "TEST_RENDER_LOG": str(self.root / "renders.log")}
         return subprocess.run(["bash", str(self.root / "scripts/sync-remnawave-routing.sh")],
                               env=env, capture_output=True, text=True, timeout=20)
+
+    def add_compact_templates(self):
+        self.templates[COMPACT_UUID] = {"uuid": COMPACT_UUID, "name": "V2RayTun Compact",
+                                        "templateType": "XRAY_JSON", "templateJson": {}}
+        self.templates[COMPACT_AUTO_UUID] = {
+            "uuid": COMPACT_AUTO_UUID, "name": "V2RayTun Auto Compact",
+            "templateType": "XRAY_JSON", "templateJson": {},
+        }
+        self.settings["responseRules"]["rules"].extend([
+            {"name": "V2RAYTUN", "enabled": True, "responseType": "XRAY_JSON",
+             "conditions": [{"headerName": "user-agent", "operator": "CONTAINS", "value": "v2raytun"}],
+             "responseModifications": {"headers": [
+                 {"key": "support-url", "value": "https://support.invalid"},
+                 {"key": "GeoIPUrl", "value": "https://old.invalid/geoip.dat"},
+                 {"key": "routing", "value": "obsolete-shared-routing"}],
+                 "excludeHostsByTags": ["KEEP_EXCLUSION"], "disableHwidCheck": True}},
+            {"name": "V2RAYN", "responseType": "XRAY_JSON"},
+            {"name": "Fallback", "responseType": "XRAY_BASE64"},
+            {"name": "Browser", "responseType": "BROWSER"},
+        ])
+        self.geo_urls = {"Geoipurl": "https://geo.invalid/build-42/geoip.dat",
+                         "Geositeurl": "https://geo.invalid/build-42/geosite.dat"}
+        self.happ_payload = "happ://routing/onadd/" + base64.b64encode(json.dumps(self.geo_urls).encode()).decode()
+        self.initial_templates = copy.deepcopy(self.templates)
+        self.initial_settings = copy.deepcopy(self.settings)
+
+    def test_compact_templates_are_discovered_populated_and_updated_idempotently(self):
+        self.add_compact_templates()
+        # An expanded renderer changes geodata; compact rendering must bypass it.
+        base = copy.deepcopy(BASE)
+        base["routing"]["rules"][0]["domain"] = ["geosite:private"]
+        (self.root / "XRAY_JSON/DEFAULT.JSON").write_text(json.dumps(base))
+        renderer = self.root / "scripts/render-xray-json.sh"
+        renderer.write_text('#!/usr/bin/env bash\nset -euo pipefail\nprintf "render\\n" >> "$TEST_RENDER_LOG"\n'
+                            'jq \'.routing.rules[0].domain = ["domain:expanded.invalid"]\' "$1" > "$2"\n')
+        original_conditions = copy.deepcopy(self.settings["responseRules"]["rules"][2]["conditions"])
+        previous_state = None
+        for iteration in range(2):
+            self.patches = []
+            result = self.run_sync()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.patches, [DEFAULT_UUID, POOL_UUID, COMPACT_UUID, COMPACT_AUTO_UUID, "settings"])
+            self.assertEqual(self.templates[COMPACT_UUID]["templateJson"], base)
+            compact_auto = self.templates[COMPACT_AUTO_UUID]["templateJson"]
+            self.assertEqual(compact_auto["dns"], base["dns"])
+            self.assertEqual(compact_auto["routing"]["rules"][0]["domain"], ["geosite:private"])
+            self.assertEqual(compact_auto["routing"]["rules"][1]["balancerTag"], "auto-leastload")
+            self.assertEqual(compact_auto["routing"]["balancers"], POOL_SETTINGS["routing"]["balancers"])
+            self.assertEqual(self.templates[DEFAULT_UUID]["templateJson"]["routing"]["rules"][0]["domain"],
+                             ["domain:expanded.invalid"])
+            rules = self.settings["responseRules"]["rules"]
+            v2raytun = rules[2]
+            self.assertEqual(v2raytun["conditions"], original_conditions)
+            mods = v2raytun["responseModifications"]
+            self.assertEqual(mods["subscriptionTemplate"], "V2RayTun Compact")
+            self.assertFalse(mods["ignoreHostXrayJsonTemplate"])
+            self.assertTrue(mods["disableHwidCheck"])
+            self.assertTrue(mods["applyHeadersToEnd"])
+            self.assertEqual(mods["excludeHostsByTags"], ["KEEP_EXCLUSION", "V2RAYTUN_EXCLUDE"])
+            self.assertEqual(mods["headers"], [
+                {"key": "support-url", "value": "https://support.invalid"},
+                {"key": "geoipurl", "value": self.geo_urls["Geoipurl"]},
+                {"key": "geositeurl", "value": self.geo_urls["Geositeurl"]},
+            ])
+            for index in (0, 1, 3, 4):
+                self.assertIn("V2RAYTUN_ONLY", rules[index]["responseModifications"]["excludeHostsByTags"])
+            self.assertIn("INCY_EXCLUDE", rules[1]["responseModifications"]["excludeHostsByTags"])
+            self.assertEqual(rules[5], self.initial_settings["responseRules"]["rules"][5])
+            state = (copy.deepcopy(self.templates), copy.deepcopy(self.settings))
+            if iteration:
+                self.assertEqual(state, previous_state)
+            previous_state = state
+
+    def test_compact_auto_keeps_its_existing_ports_and_does_not_confuse_pool_discovery(self):
+        self.add_compact_templates()
+        self.templates[COMPACT_AUTO_UUID]["templateJson"] = copy.deepcopy(self.templates[POOL_UUID]["templateJson"])
+        self.templates[COMPACT_AUTO_UUID]["templateJson"]["inbounds"][1]["port"] = 10811
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.templates[COMPACT_AUTO_UUID]["templateJson"]["inbounds"][1]["port"], 10811)
+        self.assertEqual(self.templates[POOL_UUID]["templateJson"]["inbounds"][1]["port"], 10810)
+
+    def test_compact_pinned_renamed_templates(self):
+        self.add_compact_templates()
+        self.templates[COMPACT_UUID]["name"] = "Renamed compact"
+        self.templates[COMPACT_AUTO_UUID]["name"] = "Renamed compact auto"
+        self.compact_pins = (COMPACT_UUID, COMPACT_AUTO_UUID)
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.settings["responseRules"]["rules"][2]["responseModifications"]["subscriptionTemplate"],
+                         "Renamed compact")
+
+    def test_invalid_compact_targets_and_rules_abort_before_any_write(self):
+        self.add_compact_templates()
+        for case in ("missing-auto", "duplicate-name", "wrong-type", "shared-pin", "same-pin", "missing-rule", "invalid-payload"):
+            with self.subTest(case=case):
+                self.templates = copy.deepcopy(self.initial_templates)
+                self.settings = copy.deepcopy(self.initial_settings)
+                self.compact_pins = ("", "")
+                self.happ_payload = "happ://routing/onadd/" + base64.b64encode(json.dumps(self.geo_urls).encode()).decode()
+                if case == "missing-auto": del self.templates[COMPACT_AUTO_UUID]
+                elif case == "duplicate-name":
+                    self.templates[OTHER_UUID] = {**copy.deepcopy(self.templates[COMPACT_UUID]), "uuid": OTHER_UUID}
+                elif case == "wrong-type": self.templates[COMPACT_UUID]["templateType"] = "MIHOMO"
+                elif case == "shared-pin": self.compact_pins = (DEFAULT_UUID, COMPACT_AUTO_UUID)
+                elif case == "same-pin": self.compact_pins = (COMPACT_UUID, COMPACT_UUID)
+                elif case == "missing-rule": del self.settings["responseRules"]["rules"][2]
+                elif case == "invalid-payload": self.happ_payload = "not-a-routing-payload"
+                result = self.run_sync()
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.patches, [])
+
+    def test_compact_transaction_rolls_back_uncertain_writes_and_bad_responses(self):
+        self.add_compact_templates()
+        order = [DEFAULT_UUID, POOL_UUID, COMPACT_UUID, COMPACT_AUTO_UUID, "settings"]
+        for target in order:
+            for prefix in ("", "mismatch:"):
+                with self.subTest(target=target, failure=prefix):
+                    self.patches = []
+                    self.failure = prefix + target
+                    result = self.run_sync()
+                    self.assertNotEqual(result.returncode, 0)
+                    attempted = order[:order.index(target) + 1]
+                    self.assertEqual(self.patches, attempted + list(reversed(attempted)), result.stderr)
+                    self.assertEqual(self.templates, self.initial_templates)
+                    self.assertEqual(self.settings, self.initial_settings)
 
     def test_success_uses_same_policy_and_preserves_ports_and_format(self):
         result = self.run_sync()

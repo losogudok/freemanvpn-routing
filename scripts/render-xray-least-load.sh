@@ -33,8 +33,7 @@ jq -e --slurpfile settings "$settings_json" '
   else
     . as $base
     | $settings[0] as $pool
-    # The settings file may also contain a rendered policy snapshot. Only
-    # import pool settings; DNS, inbounds and rules must follow the source.
+    # Import pool settings; DNS, inbounds and rules follow the source.
     | $base
     | .remnawave = $pool.remnawave
     | .burstObservatory = $pool.burstObservatory

@@ -83,11 +83,13 @@
 
 > [!IMPORTANT]
 > ### ⚙️ Geo-файлы при ручном импорте
-> Конфиг, полученный по подписке Remnawave, уже содержит развёрнутые правила FreemanVPN и не требует настройки geo-файлов. Для ручного импорта файлов из `XRAY_JSON/` укажите кастомные geo-файлы в настройках v2RayTun (Настройки → Geoip Url / Geosite Url):
+> Стандартные шаблоны Remnawave содержат развёрнутые правила FreemanVPN. Компактные шаблоны v2RayTun загружают geo-файлы через заголовки подписки. Для ручного импорта файлов из `XRAY_JSON/` укажите кастомные geo-файлы в настройках v2RayTun (Настройки → Geoip Url / Geosite Url):
 > - **Geoip Url:** `https://github.com/losogudok/freemanvpn-geoip/releases/latest/download/geoip.dat`
 > - **Geosite Url:** `https://github.com/losogudok/freemanvpn-geosite/releases/latest/download/geosite.dat`
 >
 > Без этого правила `geoip:`/`geosite:` в файлах для ручного импорта работать не будут.
+>
+> Для v2RayTun Android 5.26.83+ доступен [компактный вариант подписки](docs/runbooks/v2raytun-compact-json.md): geo-файлы скачиваются через заголовки `geoipurl` / `geositeurl`, а JSON содержит короткие ссылки на категории. GitHub Actions автоматически собирает и публикует этот вариант при наличии шаблонов `V2RayTun Compact` и `V2RayTun Auto Compact`; Auto-хосту нужны отдельное назначение и тег из инструкции.
 
 > [!NOTE]
 > **DNS** — конфиг уже содержит DoH Google (8.8.8.8) и Яндекс (77.88.8.8) с раздельным резолвингом и статикой для `lkfl2.nalog.ru` / `lknpd.nalog.ru` — идентично профилям Happ и INCY, дополнительная настройка не требуется. При ручном импорте WHITELIST/JSONSUB v2RayTun добавит ваш активный сервер в конфиг сам.

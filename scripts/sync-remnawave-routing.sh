@@ -27,11 +27,34 @@ get_json() {
 }
 
 TEMPLATES_LIST="$(get_json "$TEMPLATES_URL")"
+
+# Compact templates may be empty on first sync. Resolve names/UUIDs before
+# legacy discovery so the two Auto variants do not become ambiguous matches.
+jq \
+  --arg default_pin "${REMNAWAVE_V2RAYTUN_TEMPLATE_UUID:-}" \
+  --arg auto_pin "${REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID:-}" '
+  (.response // .).templates as $templates
+  | def resolve($name; $pin):
+      [$templates[] | select(.templateType == "XRAY_JSON")
+        | select(if $pin != "" then .uuid == $pin else .name == $name end)]
+      | if length == 1 then .[0]
+        else error("expected exactly one XRAY_JSON template for " + $name + "; found " + (length | tostring)) end;
+    if $default_pin != "" or $auto_pin != ""
+      or any($templates[]; .name == "V2RayTun Compact" or .name == "V2RayTun Auto Compact") then
+      {default: resolve("V2RayTun Compact"; $default_pin),
+       auto: resolve("V2RayTun Auto Compact"; $auto_pin)}
+      | if .default.uuid == .auto.uuid then error("compact template UUIDs must be different") else . end
+    else null end
+' <<< "$TEMPLATES_LIST" > "$work_dir/compact-targets.json"
+compact_enabled="$(jq '. != null' "$work_dir/compact-targets.json")"
+
 TEMPLATE_UUID="$(
-  jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" '
+  jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" \
+    --slurpfile compact "$work_dir/compact-targets.json" '
     (.response // .).templates
     | if type != "array" then error("unexpected subscription templates response") else . end
-    | [.[] | select(.templateType == "XRAY_JSON")] as $templates
+    | [.[] | select(.templateType == "XRAY_JSON")
+        | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)] as $templates
     | [$templates[] | select(.name == "Default Xray JSON")] as $named
     | [$templates[] | select(.uuid == $pinned)] as $byUuid
     | if $pinned != "" then
@@ -51,9 +74,11 @@ fi
 
 # List responses omit content. Inspect each JSON template to find the pool,
 # rejecting absent/ambiguous matches before any PATCH. An optional UUID pins it.
-jq -er --arg default "$TEMPLATE_UUID" --arg pinned "${REMNAWAVE_LEASTLOAD_TEMPLATE_UUID:-}" '
+jq -er --arg default "$TEMPLATE_UUID" --arg pinned "${REMNAWAVE_LEASTLOAD_TEMPLATE_UUID:-}" \
+  --slurpfile compact "$work_dir/compact-targets.json" '
   (.response // .).templates
   | [.[] | select(.templateType == "XRAY_JSON" and .uuid != $default)
+      | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)
       | select($pinned == "" or .uuid == $pinned) | .uuid]
   | .[]
 ' <<< "$TEMPLATES_LIST" > "$work_dir/candidate-uuids.txt" || {
@@ -83,24 +108,44 @@ fi
 get_json "$TEMPLATES_URL/$TEMPLATE_UUID" > "$work_dir/current-default.json"
 CURRENT_SETTINGS="$(get_json "$SETTINGS_URL")"
 
-# Keep the existing virtual template's local listener ports. The supplied
-# template intentionally differs from DEFAULT here (HTTP 10810 vs 10809).
-jq -e --slurpfile current "$work_dir/current-pool.json" '
-  (.inbounds // []) |= map(
-    . as $inbound
-    | [($current[0].response // $current[0]).templateJson.inbounds[]?
-        | select(.tag == $inbound.tag and .protocol == $inbound.protocol)] as $matches
-    | if ($matches | length) == 1 then .port = $matches[0].port
-      elif ($matches | length) == 0 then .
-      else error("ambiguous virtual-template inbound tags") end
-  )
-' "$work_dir/leastload.json" > "$work_dir/leastload-ports.json"
-mv -- "$work_dir/leastload-ports.json" "$work_dir/leastload.json"
-
 template_uuids=("$TEMPLATE_UUID" "${pool_uuids[0]}")
 rendered_templates=("$work_dir/default.json" "$work_dir/leastload.json")
 current_responses=("$work_dir/current-default.json" "$work_dir/current-pool.json")
+printf 'null\n' > "$work_dir/v2raytun-rule.json"
+if [[ "$compact_enabled" == "true" ]]; then
+  compact_default_uuid="$(jq -r '.default.uuid' "$work_dir/compact-targets.json")"
+  compact_auto_uuid="$(jq -r '.auto.uuid' "$work_dir/compact-targets.json")"
+  compact_default_name="$(jq -r '.default.name' "$work_dir/compact-targets.json")"
+  python3 "$script_dir/render-v2raytun.py" "$work_dir/v2raytun" \
+    --template-name "$compact_default_name" --happ-routing "$HAPP_DEFAULT"
+  cp -- "$work_dir/v2raytun/response-rule.json" "$work_dir/v2raytun-rule.json"
+  get_json "$TEMPLATES_URL/$compact_default_uuid" > "$work_dir/current-compact-default.json"
+  get_json "$TEMPLATES_URL/$compact_auto_uuid" > "$work_dir/current-compact-auto.json"
+  template_uuids+=("$compact_default_uuid" "$compact_auto_uuid")
+  rendered_templates+=("$work_dir/v2raytun/default.json" "$work_dir/v2raytun/leastload.json")
+  current_responses+=("$work_dir/current-compact-default.json" "$work_dir/current-compact-auto.json")
+fi
+if (( $(printf '%s\n' "${template_uuids[@]}" | sort -u | wc -l) != ${#template_uuids[@]} )); then
+  echo "All managed template UUIDs must be different" >&2
+  exit 1
+fi
+
 for i in "${!template_uuids[@]}"; do
+  # Preserve existing listener ports in both Auto variants. Empty compact
+  # templates inherit DEFAULT's ports on their first sync.
+  if (( i == 1 || i == 3 )); then
+    jq -e --slurpfile current "${current_responses[$i]}" '
+      (.inbounds // []) |= map(
+        . as $inbound
+        | [($current[0].response // $current[0]).templateJson.inbounds[]?
+            | select(.tag == $inbound.tag and .protocol == $inbound.protocol)] as $matches
+        | if ($matches | length) == 1 then .port = $matches[0].port
+          elif ($matches | length) == 0 then .
+          else error("ambiguous virtual-template inbound tags") end
+      )
+    ' "${rendered_templates[$i]}" > "$work_dir/ports-$i.json"
+    mv -- "$work_dir/ports-$i.json" "${rendered_templates[$i]}"
+  fi
   jq -ce '
     (.response // .).templateJson
     | if type == "object" then . else error("unexpected template content") end
@@ -115,6 +160,7 @@ SETTINGS_PATCH_PAYLOAD="$(
   jq -ce \
     --arg happ "$HAPP_DEFAULT" \
     --arg incy "$INCY_DEFAULT" \
+    --slurpfile v2raytun "$work_dir/v2raytun-rule.json" \
     '
       (.response // .) as $settings
       | ($settings.responseRules.rules // []) as $rules
@@ -124,6 +170,8 @@ SETTINGS_PATCH_PAYLOAD="$(
           error("expected exactly one HAPP response rule; found rule names: " + ([$rules[].name] | join(", ") | if . == "" then "<none>" else . end))
         elif ([$rules[] | select(.name == "INCY")] | length) != 1 then
           error("expected exactly one INCY response rule; found rule names: " + ([$rules[].name] | join(", ") | if . == "" then "<none>" else . end))
+        elif $v2raytun[0] != null and ([$rules[] | select(.name == "V2RAYTUN")] | length) != 1 then
+          error("expected exactly one V2RAYTUN response rule before enabling compact templates")
         elif ([
           $rules[]
           | select(.name == "HAPP")
@@ -164,9 +212,30 @@ SETTINGS_PATCH_PAYLOAD="$(
                       else .
                       end
                     )
+                  elif .name == "V2RAYTUN" and $v2raytun[0] != null then
+                    .responseType = "XRAY_JSON"
+                    | .responseModifications.subscriptionTemplate = $v2raytun[0].responseModifications.subscriptionTemplate
+                    | .responseModifications.ignoreHostXrayJsonTemplate = false
+                    | .responseModifications.applyHeadersToEnd = true
+                    | .responseModifications.headers = (
+                        [ .responseModifications.headers[]?
+                          | select(((.key // "") | ascii_downcase) as $key
+                            | $key != "routing" and $key != "geoipurl" and $key != "geositeurl") ]
+                        + [$v2raytun[0].responseModifications.headers[]
+                            | select(.key == "geoipurl" or .key == "geositeurl")]
+                      )
                   else
                     .
                   end
+                  | if $v2raytun[0] != null
+                      and (.responseType == "XRAY_JSON" or .responseType == "XRAY_BASE64"
+                        or .responseType == "MIHOMO" or .responseType == "CLASH"
+                        or .responseType == "STASH" or .responseType == "SINGBOX") then
+                      .responseModifications.excludeHostsByTags = (
+                        ((.responseModifications.excludeHostsByTags // [])
+                         + [if .name == "V2RAYTUN" then "V2RAYTUN_EXCLUDE" else "V2RAYTUN_ONLY" end]) | unique
+                      )
+                    else . end
                 )
             )
           }
@@ -220,9 +289,9 @@ rollback() {
         customResponseHeaders: (.customResponseHeaders // null), responseRules: .responseRules
       }) == $expected
     ' <<< "$rollback_response" > /dev/null; then
-      echo "Rolled back Remnawave HAPP and INCY routing" >&2
+      echo "Rolled back Remnawave client routing headers" >&2
     else
-      echo "Failed to roll back Remnawave HAPP and INCY routing" >&2
+      echo "Failed to roll back Remnawave client routing headers" >&2
       rollback_failed=true
     fi
   fi
@@ -268,4 +337,4 @@ jq -e --argjson expected "$SETTINGS_PATCH_PAYLOAD" '
 ' <<< "$SETTINGS_PATCH_RESPONSE" > /dev/null
 
 trap - ERR
-echo "Remnawave default and virtual XRAY_JSON templates, HAPP and INCY routing updated"
+echo "Remnawave ${#template_uuids[@]} XRAY_JSON templates and client routing headers updated (v2rayTun compact: $compact_enabled)"

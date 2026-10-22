@@ -1,13 +1,16 @@
 # Generate the YouTube Auto virtual-host template
 
 The source of the client routing policy is [XRAY_JSON/DEFAULT.JSON](../../XRAY_JSON/DEFAULT.JSON).
-[LEASTLOAD.settings.json](../../XRAY_JSON/LEASTLOAD.settings.json) currently
-contains a complete rendered template. The renderer reads only its
-virtual-host injection, probes, and balancer settings. It always takes
-DNS, FakeDNS, inbounds, and routing rules from a freshly rendered DEFAULT,
-so the embedded snapshot cannot overwrite current policy updates.
-The supplied full template uses HTTP port `10810`; regenerating from
-DEFAULT uses its HTTP port `10809` unless you explicitly adjust the output.
+[LEASTLOAD.settings.json](../../XRAY_JSON/LEASTLOAD.settings.json) supplies
+virtual-host injection, probes, and balancer settings. The renderer takes
+DNS, FakeDNS, inbounds, outbounds, and routing rules from a freshly rendered
+DEFAULT, ignoring any policy snapshot in the settings file.
+Manual rendering uses DEFAULT's HTTP port `10809`; synchronization preserves
+the existing panel template's local inbound ports, including HTTP `10810`.
+
+For compatible v2RayTun clients, use the [compact template bundle](v2raytun-compact-json.md)
+to retain geo references and supply geo-file download URLs through headers.
+The shared synchronization described here continues to expand geodata.
 
 Generate the full template from the routing repository:
 

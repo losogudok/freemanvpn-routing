@@ -28,8 +28,11 @@ exactly five VLESS outbounds:
 | `auto-proxy-4` | `chat.mmorpg.uk` |
 | `auto-proxy-5` | `news.freemanbot.uk` |
 
-The virtual entry's DNS, routing, inbounds, FakeDNS pool, and burst observatory
-exactly match [LEASTLOAD.settings.json](../../XRAY_JSON/LEASTLOAD.settings.json).
+At verification time, the virtual entry's DNS, routing, inbounds, FakeDNS pool,
+and burst observatory exactly matched the full template then stored in
+[LEASTLOAD.settings.json](../../XRAY_JSON/LEASTLOAD.settings.json). That file
+is read only for pool settings; shared client policy comes from DEFAULT
+through the renderer, regardless of any policy snapshot stored there.
 Despite the file and tag names, the strategy is **leastPing**. Both selectors
 match the complete `auto-proxy` prefix, and `fallbackTag: block` is defined.
 
@@ -97,7 +100,7 @@ the headers back on failure. It does not change the HAPP response type.
 ## Renderer repair
 
 The original least-load renderer merged the complete settings file over
-freshly rendered DEFAULT. Because the settings file now contains a full
+freshly rendered DEFAULT. Because the settings file then contained a full
 snapshot, it discarded new DNS, inbound, and routing policy changes.
 
 The renderer now imports only `remnawave`, `burstObservatory`, and
@@ -105,7 +108,8 @@ The renderer now imports only `remnawave`, `burstObservatory`, and
 to the balancer. A regression using a new direct-domain rule and static
 DNS host failed before the repair and passed afterward. DNS, inbounds,
 FakeDNS, and both proxy-to-balancer rewrites were also checked. The supplied
-settings file was left byte-for-byte unchanged.
+settings file was left byte-for-byte unchanged during that repair. Its policy
+snapshot is ignored by the renderer.
 
 ## Rollout gate
 
