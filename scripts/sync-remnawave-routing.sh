@@ -38,7 +38,8 @@ jq \
       [$templates[] | select(.templateType == "XRAY_JSON")
         | select(if $pin != "" then .uuid == $pin else .name == $name end)]
       | if length == 1 then .[0]
-        else error("expected exactly one XRAY_JSON template for " + $name + "; found " + (length | tostring)) end;
+        else error("expected exactly one XRAY_JSON template for " + $name + "; found " + (length | tostring)
+          + ". Available templates: " + ([$templates[] | "\(.name) [\(.templateType)] (\(.uuid))"] | join(", "))) end;
     if $default_pin != "" or $auto_pin != ""
       or any($templates[]; .name == "V2RayTun Compact" or .name == "V2RayTun Auto Compact") then
       {default: resolve("V2RayTun Compact"; $default_pin),
