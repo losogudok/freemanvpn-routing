@@ -1,6 +1,7 @@
 """Check compact templates against the real shared routing policy."""
 
 import json
+import base64
 from pathlib import Path
 import subprocess
 import tempfile
@@ -46,7 +47,13 @@ class V2RayTunTest(unittest.TestCase):
             self.assertFalse(mods["ignoreHostXrayJsonTemplate"])
             self.assertTrue(mods["applyHeadersToEnd"])
             headers = {header["key"].lower(): header["value"] for header in mods["headers"]}
-            self.assertNotIn("routing", headers)
+            # Android 5.26.83 requires nonblank routing to retain the geo URLs.
+            # The metadata must not point ordinary profiles at Auto or vice versa.
+            metadata = json.loads(base64.b64decode(headers["routing"], validate=True))
+            self.assertEqual(metadata["rules"], [])
+            self.assertEqual(metadata["balancers"], [])
+            self.assertEqual(metadata["name"], "FreemanVPN Geo Files")
+            self.assertTrue(metadata["id"])
             happ = json.loads((REPO / "HAPP/DEFAULT.JSON").read_text())
             self.assertEqual(headers["geoipurl"], happ["Geoipurl"])
             self.assertEqual(headers["geositeurl"], happ["Geositeurl"])

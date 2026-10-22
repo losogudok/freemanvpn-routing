@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import uuid
 from urllib.parse import urlparse
 
 
@@ -23,7 +24,20 @@ def render(output_dir, template_name, happ_routing=None):
         if not happ_routing.startswith(prefix):
             raise ValueError("Expected a happ://routing/onadd/ payload")
         happ = json.loads(base64.b64decode(happ_routing[len(prefix):], validate=True))
-    headers = []
+    # Android 5.26.83 drops geo URLs when subscription routing is blank.
+    # Raw JSON profiles keep their own routing; this empty native profile
+    # enables per-subscription geo downloads without a shared proxy target.
+    routing_metadata = {
+        "id": str(uuid.uuid5(uuid.NAMESPACE_URL,
+                            "https://github.com/losogudok/freemanvpn-routing/v2raytun/geodata")),
+        "name": "FreemanVPN Geo Files",
+        "domainStrategy": "AsIs",
+        "domainMatcher": "hybrid",
+        "balancers": [],
+        "rules": [],
+    }
+    headers = [{"key": "routing", "value": base64.b64encode(
+        json.dumps(routing_metadata, separators=(",", ":")).encode()).decode()}]
     for key, field in (("geoipurl", "Geoipurl"), ("geositeurl", "Geositeurl")):
         value = happ[field]
         parsed = urlparse(value)
@@ -44,7 +58,7 @@ def render(output_dir, template_name, happ_routing=None):
     mods["applyHeadersToEnd"] = True
     mods["excludeHostsByTags"] = list(dict.fromkeys(
         mods.get("excludeHostsByTags", []) + ["V2RAYTUN_EXCLUDE"]))
-    # Routing stays in each small template: proxy and auto-leastload differ.
+    # Replace only managed headers; routing policy stays in the JSON templates.
     mods["headers"] = [header for header in mods.get("headers", [])
                        if header["key"].lower() not in ("routing", "geoipurl", "geositeurl")]
     mods["headers"].extend(headers)

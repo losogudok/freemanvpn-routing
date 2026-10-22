@@ -217,11 +217,17 @@ class SyncTest(unittest.TestCase):
             self.assertTrue(mods["disableHwidCheck"])
             self.assertTrue(mods["applyHeadersToEnd"])
             self.assertEqual(mods["excludeHostsByTags"], ["KEEP_EXCLUSION", "V2RAYTUN_EXCLUDE"])
-            self.assertEqual(mods["headers"], [
+            self.assertEqual([h for h in mods["headers"] if h["key"] != "routing"], [
                 {"key": "support-url", "value": "https://support.invalid"},
                 {"key": "geoipurl", "value": self.geo_urls["Geoipurl"]},
                 {"key": "geositeurl", "value": self.geo_urls["Geositeurl"]},
             ])
+            routing_headers = [h for h in mods["headers"] if h["key"] == "routing"]
+            self.assertEqual(len(routing_headers), 1)
+            metadata = json.loads(base64.b64decode(routing_headers[0]["value"], validate=True))
+            self.assertEqual(metadata["rules"], [])
+            self.assertEqual(metadata["balancers"], [])
+            self.assertTrue(metadata["id"])
             for index in (0, 1, 3, 4):
                 self.assertIn("V2RAYTUN_ONLY", rules[index]["responseModifications"]["excludeHostsByTags"])
             self.assertIn("INCY_EXCLUDE", rules[1]["responseModifications"]["excludeHostsByTags"])

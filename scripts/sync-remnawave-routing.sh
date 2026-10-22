@@ -223,7 +223,7 @@ SETTINGS_PATCH_PAYLOAD="$(
                           | select(((.key // "") | ascii_downcase) as $key
                             | $key != "routing" and $key != "geoipurl" and $key != "geositeurl") ]
                         + [$v2raytun[0].responseModifications.headers[]
-                            | select(.key == "geoipurl" or .key == "geositeurl")]
+                            | select(.key == "routing" or .key == "geoipurl" or .key == "geositeurl")]
                       )
                   else
                     .
