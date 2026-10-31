@@ -54,8 +54,7 @@
           "geosite:github",
           "geosite:twitch-ads",
           "geosite:youtube",
-          "geosite:telegram",
-          "geosite:spotify-auth"
+          "geosite:telegram"
         ],
         "outboundTag": "proxy"
       },
