@@ -15,7 +15,7 @@
 
 # 🚀 FreemanVPN Routing
 
-**Готовые конфигурации маршрутизации для [Happ](https://happ.su), [INCY](https://incy.cc), [v2RayTun](https://github.com/2dust/v2rayAndroid) и [Mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta, Clash Mi и др.)**
+**Готовые конфигурации маршрутизации для [Happ](https://happ.su), [INCY](https://incy.cc), [v2RayTun](https://github.com/2dust/v2rayAndroid), [sing-box](https://sing-box.sagernet.org) и [Mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta, Clash Mi и др.)**
 
 > Быстрый и универсальный роутинг: без дыр и утечки вашего сервера, "хирургическая" фильтрация, все нужное — разблокировано, а ненужное — заблокировано
 
@@ -93,6 +93,23 @@
 
 > [!NOTE]
 > **DNS** — конфиг уже содержит DoH Google (8.8.8.8) и Яндекс (77.88.8.8) с раздельным резолвингом и статикой для `lkfl2.nalog.ru` / `lknpd.nalog.ru` — идентично профилям Happ и INCY, дополнительная настройка не требуется. При ручном импорте WHITELIST/JSONSUB v2RayTun добавит ваш активный сервер в конфиг сам.
+
+## 📱 Установка для sing-box
+
+Роутинг выдаётся автоматически по подписке через шаблон Remnawave **Default Singbox**. Ручной импорт конфигурации не поддерживается.
+
+<table width="100%">
+<thead><tr><th align="left">Профиль</th><th align="left">Описание</th></tr></thead>
+<tbody>
+<tr><td><b>DEFAULT</b></td><td>RU/BY direct, YouTube/Telegram/GitHub через прокси, реклама блокируется</td></tr>
+<tr><td><b>Auto</b></td><td>По умолчанию выбран <code>Auto</code> (urltest); можно выбрать конкретный сервер</td></tr>
+<tr><td><b>DNS</b></td><td>DoH Яндекс (direct) и Google (proxy), fake-IP, статика <code>nalog.ru</code></td></tr>
+<tr><td><b>IPv6</b></td><td>IPv4-only: AAAA-запросы подавляются, IPv6-трафик блокируется</td></tr>
+</tbody>
+</table>
+
+> [!NOTE]
+> Клиенты: SFA, SFI, SFM, SFT и Karing. Требуется sing-box 1.13+. Списки `.srs` берутся из freemanvpn-geoip/geosite и закреплены по коммиту релиза; обновление выполняет GitHub Actions. Настройка панели и проверка — в [инструкции](docs/runbooks/singbox.md).
 
 ## 💻 Установка для Mihomo (Clash Meta)
 
@@ -206,7 +223,7 @@
 <tr><td><a href="https://github.com/losogudok/3x-ui">🚀 3x-ui</a></td><td>Кастомный форк с встроенным FreemanVPN-роутингом, UI-выбором профиля и автообновлением geo-файлов</td></tr>
 <tr><td><a href="ADDON_AUTOROUTING/Marzban/">Marzban</a></td><td><code>subscription.py</code> — один файл для JSON и Non-JSON подписок, тип роутинга через env var</td></tr>
 <tr><td><a href="ADDON_AUTOROUTING/Marzneshin/">Marzneshin</a></td><td><code>subscription.py</code> — один файл для JSON и Non-JSON подписок, тип роутинга через env var</td></tr>
-<tr><td><a href="ADDON_AUTOROUTING/Remnawave/">Remnawave</a></td><td>GitHub Actions обновляет HAPP/INCY Response Rules и XRAY_JSON шаблон через API</td></tr>
+<tr><td><a href="ADDON_AUTOROUTING/Remnawave/">Remnawave</a></td><td>GitHub Actions обновляет HAPP/INCY Response Rules, XRAY_JSON и sing-box шаблоны через API</td></tr>
 </tbody>
 </table>
 
@@ -220,9 +237,11 @@
 GitHub Actions:
 - Проверяет теги апстрим-репозиториев
 - Обновляет URL и таймстемпы в JSON-конфигах
+- Закрепляет `.srs`-ссылки sing-box за коммитами релизов freemanvpn-geoip/geosite
 - Генерирует base64-диплинки для Happ и INCY
 - Разворачивает FreemanVPN geo-категории в домены/CIDR и синхронизирует самодостаточный XRAY_JSON шаблон v2RayTun с Remnawave
-- Синхронизирует DEFAULT-роутинг HAPP, INCY и XRAY_JSON с Remnawave как одну транзакцию
+- Синхронизирует DEFAULT-роутинг HAPP, INCY, XRAY_JSON и sing-box с Remnawave как одну транзакцию
+- Проверяет sing-box конфигурацию и паритет с XRAY_JSON
 - Коммитит изменения автоматически
 
 ## 🔗 Связанные проекты

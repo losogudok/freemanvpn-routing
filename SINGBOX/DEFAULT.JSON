@@ -1,0 +1,388 @@
+{
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "dns-yandex",
+        "server": "77.88.8.8",
+        "path": "/dns-query",
+        "detour": "direct"
+      },
+      {
+        "type": "https",
+        "tag": "dns-google",
+        "server": "8.8.8.8",
+        "path": "/dns-query",
+        "detour": "proxy"
+      },
+      {
+        "type": "fakeip",
+        "tag": "dns-fakeip",
+        "inet4_range": "198.18.0.0/15"
+      },
+      {
+        "type": "hosts",
+        "tag": "dns-hosts",
+        "path": [],
+        "predefined": {
+          "lkfl2.nalog.ru": "213.24.64.175",
+          "lknpd.nalog.ru": "213.24.64.181"
+        }
+      }
+    ],
+    "rules": [
+      {
+        "query_type": "AAAA",
+        "action": "predefined",
+        "rcode": "NOERROR"
+      },
+      {
+        "domain": [
+          "lkfl2.nalog.ru",
+          "lknpd.nalog.ru"
+        ],
+        "action": "route",
+        "server": "dns-hosts"
+      },
+      {
+        "rule_set": [
+          "geosite-private",
+          "geosite-category-ru",
+          "geosite-whitelist",
+          "geosite-apple",
+          "geosite-epicgames",
+          "geosite-riot",
+          "geosite-escapefromtarkov",
+          "geosite-steam",
+          "geosite-twitch",
+          "geosite-pinterest",
+          "geosite-faceit",
+          "geosite-blizzard",
+          "geosite-ip-checkers"
+        ],
+        "action": "route",
+        "server": "dns-yandex"
+      },
+      {
+        "query_type": [
+          "A"
+        ],
+        "action": "route",
+        "server": "dns-fakeip"
+      }
+    ],
+    "final": "dns-google",
+    "strategy": "ipv4_only",
+    "independent_cache": true
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "singbox",
+      "stack": "mixed",
+      "address": [
+        "172.19.0.1/30"
+      ],
+      "mtu": 9000,
+      "auto_route": true,
+      "strict_route": true,
+      "endpoint_independent_nat": true
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 2412,
+      "set_system_proxy": false
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "Auto",
+      "outbounds": [],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "5m",
+      "tolerance": 150
+    },
+    {
+      "type": "selector",
+      "tag": "proxy",
+      "outbounds": [],
+      "default": "Auto",
+      "interrupt_exist_connections": true
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_cidr": [
+          "::/0"
+        ],
+        "action": "reject"
+      },
+      {
+        "rule_set": [
+          "geosite-win-spy",
+          "geosite-torrent",
+          "geosite-category-ads"
+        ],
+        "action": "route",
+        "outbound": "block"
+      },
+      {
+        "rule_set": [
+          "geosite-google-play",
+          "geosite-github",
+          "geosite-twitch-ads",
+          "geosite-youtube",
+          "geosite-telegram"
+        ],
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "rule_set": [
+          "geosite-private",
+          "geosite-category-ru",
+          "geosite-whitelist",
+          "geosite-apple",
+          "geosite-epicgames",
+          "geosite-riot",
+          "geosite-escapefromtarkov",
+          "geosite-steam",
+          "geosite-twitch",
+          "geosite-pinterest",
+          "geosite-faceit",
+          "geosite-blizzard",
+          "geosite-ip-checkers",
+          "geosite-spotify"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "action": "resolve",
+        "server": "dns-google"
+      },
+      {
+        "rule_set": [
+          "geoip-private",
+          "geoip-direct",
+          "geoip-blizzard"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "geosite-private",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/private.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-category-ru",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/category-ru.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-whitelist",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/whitelist.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-apple",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/apple.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-epicgames",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/epicgames.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-riot",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/riot.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-escapefromtarkov",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/escapefromtarkov.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-steam",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/steam.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-twitch",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/twitch.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-pinterest",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/pinterest.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-faceit",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/faceit.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-blizzard",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/blizzard.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-ip-checkers",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/ip-checkers.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-spotify",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/spotify.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-google-play",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/google-play.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-github",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/github.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-twitch-ads",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/twitch-ads.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-youtube",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/youtube.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-telegram",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/telegram.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-win-spy",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/win-spy.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-torrent",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/torrent.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geosite-category-ads",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/category-ads.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geoip-private",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@b1ebb7740b28b527f1795824762de4736f712e30/sing-box/private.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geoip-direct",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@b1ebb7740b28b527f1795824762de4736f712e30/sing-box/direct.srs",
+        "download_detour": "direct"
+      },
+      {
+        "type": "remote",
+        "tag": "geoip-blizzard",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@b1ebb7740b28b527f1795824762de4736f712e30/sing-box/blizzard.srs",
+        "download_detour": "direct"
+      }
+    ],
+    "final": "proxy",
+    "auto_detect_interface": true,
+    "default_domain_resolver": {
+      "server": "dns-yandex",
+      "strategy": "ipv4_only"
+    }
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_fakeip": true
+    }
+  }
+}

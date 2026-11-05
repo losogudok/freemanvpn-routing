@@ -49,6 +49,39 @@ jq \
 ' <<< "$TEMPLATES_LIST" > "$work_dir/compact-targets.json"
 compact_enabled="$(jq '. != null' "$work_dir/compact-targets.json")"
 
+# The sing-box template is optional during rollout: only manage it when both
+# the committed source and the panel template named Default Singbox exist.
+singbox_source="$repo_dir/SINGBOX/DEFAULT.JSON"
+printf 'null\n' > "$work_dir/singbox-template.json"
+if [[ -f "$singbox_source" ]]; then
+  jq -e 'type == "object" and (.outbounds | type == "array")' "$singbox_source" > /dev/null
+  jq --arg pin "${REMNAWAVE_SINGBOX_TEMPLATE_UUID:-}" '
+    (.response // .).templates as $templates
+    | def resolve($name; $pin):
+        [$templates[] | select(.templateType == "SINGBOX")
+          | select(if $pin != "" then .uuid == $pin else .name == $name end)]
+        | if length == 1 then .[0]
+          else error("expected exactly one SINGBOX template for " + $name + "; found " + (length | tostring)
+            + ". Available templates: " + ([$templates[] | "\(.name) [\(.templateType)] (\(.uuid))"] | join(", "))) end;
+    if $pin != "" or any($templates[]; .name == "Default Singbox") then
+      resolve("Default Singbox"; $pin)
+    else null end
+  ' <<< "$TEMPLATES_LIST" > "$work_dir/singbox-target.json"
+  singbox_enabled="$(jq '. != null' "$work_dir/singbox-target.json")"
+  if [[ "$singbox_enabled" == "true" ]]; then
+    jq -n \
+      --arg name "$(jq -r '.name' "$work_dir/singbox-target.json")" \
+      --arg uuid "$(jq -r '.uuid' "$work_dir/singbox-target.json")" \
+      '{name: $name, uuid: $uuid}' > "$work_dir/singbox-template.json"
+  fi
+else
+  singbox_enabled=false
+  if [[ -n "${REMNAWAVE_SINGBOX_TEMPLATE_UUID:-}" ]]; then
+    echo "REMNAWAVE_SINGBOX_TEMPLATE_UUID is set but $singbox_source is missing" >&2
+    exit 1
+  fi
+fi
+
 TEMPLATE_UUID="$(
   jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" \
     --slurpfile compact "$work_dir/compact-targets.json" '
@@ -126,6 +159,13 @@ if [[ "$compact_enabled" == "true" ]]; then
   rendered_templates+=("$work_dir/v2raytun/default.json" "$work_dir/v2raytun/leastload.json")
   current_responses+=("$work_dir/current-compact-default.json" "$work_dir/current-compact-auto.json")
 fi
+if [[ "$singbox_enabled" == "true" ]]; then
+  singbox_uuid="$(jq -r '.uuid' "$work_dir/singbox-target.json")"
+  get_json "$TEMPLATES_URL/$singbox_uuid" > "$work_dir/current-singbox.json"
+  template_uuids+=("$singbox_uuid")
+  rendered_templates+=("$singbox_source")
+  current_responses+=("$work_dir/current-singbox.json")
+fi
 if (( $(printf '%s\n' "${template_uuids[@]}" | sort -u | wc -l) != ${#template_uuids[@]} )); then
   echo "All managed template UUIDs must be different" >&2
   exit 1
@@ -162,9 +202,13 @@ SETTINGS_PATCH_PAYLOAD="$(
     --arg happ "$HAPP_DEFAULT" \
     --arg incy "$INCY_DEFAULT" \
     --slurpfile v2raytun "$work_dir/v2raytun-rule.json" \
+    --slurpfile singbox "$work_dir/singbox-template.json" \
     '
       (.response // .) as $settings
       | ($settings.responseRules.rules // []) as $rules
+      | ([$rules | to_entries[] | select(.value.name == "SINGBOX") | .key] | .[0]) as $singbox_index
+      | ([$rules | to_entries[] | select(.value.name == "THRONE") | .key] | .[0]) as $throne_index
+      | ([$rules | to_entries[] | select((.value.conditions // null) == []) | .key] | .[0]) as $fallback_index
       | if $settings.responseRules == null then
           error("responseRules is null in subscription settings; create Response Rules in the panel first")
         elif ([$rules[] | select(.name == "HAPP")] | length) != 1 then
@@ -173,6 +217,15 @@ SETTINGS_PATCH_PAYLOAD="$(
           error("expected exactly one INCY response rule; found rule names: " + ([$rules[].name] | join(", ") | if . == "" then "<none>" else . end))
         elif $v2raytun[0] != null and ([$rules[] | select(.name == "V2RAYTUN")] | length) != 1 then
           error("expected exactly one V2RAYTUN response rule before enabling compact templates")
+        elif $singbox[0] == null and ([$rules[] | select(.name == "SINGBOX")] | length) > 0 then
+          error("SINGBOX response rule exists but the Default Singbox template is missing")
+        elif $singbox[0] != null and ([$rules[] | select(.name == "SINGBOX")] | length) != 1 then
+          error("expected exactly one SINGBOX response rule before enabling the sing-box template")
+        elif $singbox[0] != null and $throne_index != null and $singbox_index < $throne_index then
+          error("SINGBOX response rule must be placed after THRONE")
+        elif $singbox[0] != null and $singbox_index != null and $fallback_index != null
+          and $singbox_index > $fallback_index then
+          error("SINGBOX response rule must be placed before the fallback response rule")
         elif ([
           $rules[]
           | select(.name == "HAPP")
@@ -224,6 +277,12 @@ SETTINGS_PATCH_PAYLOAD="$(
                             | $key != "routing" and $key != "geoipurl" and $key != "geositeurl") ]
                         + [$v2raytun[0].responseModifications.headers[]
                             | select(.key == "routing" or .key == "geoipurl" or .key == "geositeurl")]
+                      )
+                  elif .name == "SINGBOX" and $singbox[0] != null then
+                    .responseType = "SINGBOX"
+                    | .responseModifications = (
+                        (.responseModifications // {})
+                        | .subscriptionTemplate = $singbox[0].name
                       )
                   else
                     .
@@ -304,9 +363,9 @@ rollback() {
       && jq -e --slurpfile expected "$work_dir/current-$i.json" \
         '(.response // .).templateJson == $expected[0]' \
         <<< "$rollback_response" > /dev/null; then
-      echo "Rolled back Remnawave XRAY_JSON template ${template_uuids[$i]}" >&2
+      echo "Rolled back Remnawave template ${template_uuids[$i]}" >&2
     else
-      echo "Failed to roll back Remnawave XRAY_JSON template ${template_uuids[$i]}" >&2
+      echo "Failed to roll back Remnawave template ${template_uuids[$i]}" >&2
       rollback_failed=true
     fi
   done
@@ -338,4 +397,4 @@ jq -e --argjson expected "$SETTINGS_PATCH_PAYLOAD" '
 ' <<< "$SETTINGS_PATCH_RESPONSE" > /dev/null
 
 trap - ERR
-echo "Remnawave ${#template_uuids[@]} XRAY_JSON templates and client routing headers updated (v2rayTun compact: $compact_enabled)"
+echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled)"

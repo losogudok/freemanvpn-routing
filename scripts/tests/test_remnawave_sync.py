@@ -19,6 +19,7 @@ POOL_UUID = "22222222-2222-4222-8222-222222222222"
 OTHER_UUID = "33333333-3333-4333-8333-333333333333"
 COMPACT_UUID = "44444444-4444-4444-8444-444444444444"
 COMPACT_AUTO_UUID = "55555555-5555-4555-8555-555555555555"
+SINGBOX_UUID = "66666666-6666-4666-8666-666666666666"
 BASE = {
     "remnawave": {"addVirtualHostAsOutbound": True},
     "dns": {"hosts": {"fresh-policy.invalid": "192.0.2.123"}},
@@ -54,6 +55,7 @@ class SyncTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "scripts").mkdir()
         (self.root / "XRAY_JSON").mkdir()
+        (self.root / "SINGBOX").mkdir()
         (self.root / "runner").mkdir()
         for name in ["sync-remnawave-routing.sh", "render-xray-least-load.sh", "render-v2raytun.py"]:
             shutil.copy(REPO / "scripts" / name, self.root / "scripts" / name)
@@ -65,6 +67,7 @@ class SyncTest(unittest.TestCase):
         renderer.chmod(0o755)
         (self.root / "XRAY_JSON/DEFAULT.JSON").write_text(json.dumps(BASE))
         (self.root / "XRAY_JSON/LEASTLOAD.settings.json").write_text(json.dumps(POOL_SETTINGS))
+        shutil.copy(REPO / "SINGBOX/DEFAULT.JSON", self.root / "SINGBOX/DEFAULT.JSON")
         shutil.copy(REPO / "response_rules.json", self.root / "response_rules.json")
         old_pool = copy.deepcopy(POOL_SETTINGS)
         old_pool["inbounds"] = copy.deepcopy(BASE["inbounds"])
@@ -91,6 +94,7 @@ class SyncTest(unittest.TestCase):
         self.failure = None
         self.happ_payload = "new-happ"
         self.compact_pins = ("", "")
+        self.singbox_pin = ""
         self.rollback_failure = None
         test = self
 
@@ -155,6 +159,7 @@ class SyncTest(unittest.TestCase):
                "REMNAWAVE_DEFAULT_TEMPLATE_UUID": default_pinned,
                "REMNAWAVE_V2RAYTUN_TEMPLATE_UUID": self.compact_pins[0],
                "REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID": self.compact_pins[1],
+               "REMNAWAVE_SINGBOX_TEMPLATE_UUID": self.singbox_pin,
                "TEST_RENDER_LOG": str(self.root / "renders.log")}
         return subprocess.run(["bash", str(self.root / "scripts/sync-remnawave-routing.sh")],
                               env=env, capture_output=True, text=True, timeout=20)
@@ -181,6 +186,35 @@ class SyncTest(unittest.TestCase):
         self.geo_urls = {"Geoipurl": "https://geo.invalid/build-42/geoip.dat",
                          "Geositeurl": "https://geo.invalid/build-42/geosite.dat"}
         self.happ_payload = "happ://routing/onadd/" + base64.b64encode(json.dumps(self.geo_urls).encode()).decode()
+        self.initial_templates = copy.deepcopy(self.templates)
+        self.initial_settings = copy.deepcopy(self.settings)
+
+    def add_singbox_template(self):
+        self.templates[SINGBOX_UUID] = {
+            "uuid": SINGBOX_UUID,
+            "name": "Default Singbox",
+            "templateType": "SINGBOX",
+            "templateJson": {"old": "singbox"},
+        }
+        self.settings["responseRules"]["rules"].extend([
+            {"name": "THRONE", "responseType": "XRAY_JSON"},
+            {
+                "name": "SINGBOX",
+                "enabled": True,
+                "responseType": "XRAY_JSON",
+                "conditions": [{
+                    "headerName": "user-agent",
+                    "operator": "REGEX",
+                    "value": "sing-box",
+                    "caseSensitive": False,
+                }],
+                "responseModifications": {
+                    "headers": [{"key": "x-keep", "value": "1"}],
+                    "excludeHostsByTags": ["KEEP_SINGBOX"],
+                },
+            },
+            {"name": "Fallback Base64", "responseType": "XRAY_BASE64", "conditions": []},
+        ])
         self.initial_templates = copy.deepcopy(self.templates)
         self.initial_settings = copy.deepcopy(self.settings)
 
@@ -290,6 +324,110 @@ class SyncTest(unittest.TestCase):
                     self.assertEqual(self.patches, attempted + list(reversed(attempted)), result.stderr)
                     self.assertEqual(self.templates, self.initial_templates)
                     self.assertEqual(self.settings, self.initial_settings)
+
+    def test_singbox_template_is_discovered_populated_and_updated_idempotently(self):
+        self.add_singbox_template()
+        source = json.loads((REPO / "SINGBOX/DEFAULT.JSON").read_text())
+        previous_state = None
+        for iteration in range(2):
+            self.patches = []
+            result = self.run_sync()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.patches, [DEFAULT_UUID, POOL_UUID, SINGBOX_UUID, "settings"])
+            self.assertEqual(self.templates[SINGBOX_UUID]["templateJson"], source)
+            singbox_rule = next(rule for rule in self.settings["responseRules"]["rules"]
+                                if rule["name"] == "SINGBOX")
+            self.assertEqual(singbox_rule["responseType"], "SINGBOX")
+            self.assertEqual(singbox_rule["responseModifications"]["subscriptionTemplate"],
+                             "Default Singbox")
+            self.assertEqual(singbox_rule["responseModifications"]["headers"],
+                             [{"key": "x-keep", "value": "1"}])
+            self.assertEqual(singbox_rule["responseModifications"]["excludeHostsByTags"],
+                             ["KEEP_SINGBOX"])
+            state = (copy.deepcopy(self.templates), copy.deepcopy(self.settings))
+            if iteration:
+                self.assertEqual(state, previous_state)
+            previous_state = state
+
+    def test_singbox_missing_rule_aborts_before_writing(self):
+        self.add_singbox_template()
+        rules = self.settings["responseRules"]["rules"]
+        rules[:] = [rule for rule in rules if rule["name"] != "SINGBOX"]
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SINGBOX response rule", result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_singbox_rule_without_template_aborts_before_writing(self):
+        self.add_singbox_template()
+        del self.templates[SINGBOX_UUID]
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn("template is missing", result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_singbox_duplicate_rule_aborts_before_writing(self):
+        self.add_singbox_template()
+        rules = self.settings["responseRules"]["rules"]
+        singbox_rule = next(rule for rule in rules if rule["name"] == "SINGBOX")
+        rules.append(copy.deepcopy(singbox_rule))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_singbox_rule_after_fallback_aborts_before_writing(self):
+        self.add_singbox_template()
+        rules = self.settings["responseRules"]["rules"]
+        singbox_rule = next(rule for rule in rules if rule["name"] == "SINGBOX")
+        rules.remove(singbox_rule)
+        rules.append(singbox_rule)
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn("before the fallback", result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_singbox_rule_before_throne_aborts_before_writing(self):
+        self.add_singbox_template()
+        rules = self.settings["responseRules"]["rules"]
+        singbox_rule = next(rule for rule in rules if rule["name"] == "SINGBOX")
+        throne_index = next(index for index, rule in enumerate(rules)
+                            if rule["name"] == "THRONE")
+        rules.remove(singbox_rule)
+        rules.insert(throne_index, singbox_rule)
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn("after THRONE", result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_singbox_pinned_renamed_template(self):
+        self.add_singbox_template()
+        self.templates[SINGBOX_UUID]["name"] = "Renamed singbox"
+        self.singbox_pin = SINGBOX_UUID
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        singbox_rule = next(rule for rule in self.settings["responseRules"]["rules"]
+                            if rule["name"] == "SINGBOX")
+        self.assertEqual(singbox_rule["responseModifications"]["subscriptionTemplate"],
+                         "Renamed singbox")
+
+    def test_singbox_pin_must_identify_a_singbox_template(self):
+        self.add_singbox_template()
+        self.singbox_pin = DEFAULT_UUID
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_singbox_transaction_rolls_back_uncertain_writes(self):
+        self.add_singbox_template()
+        self.failure = SINGBOX_UUID
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.patches, [
+            DEFAULT_UUID, POOL_UUID, SINGBOX_UUID,
+            SINGBOX_UUID, POOL_UUID, DEFAULT_UUID,
+        ])
+        self.assertEqual(self.templates, self.initial_templates)
+        self.assertEqual(self.settings, self.initial_settings)
 
     def test_success_uses_same_policy_and_preserves_ports_and_format(self):
         result = self.run_sync()

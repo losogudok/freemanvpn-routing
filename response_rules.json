@@ -127,6 +127,27 @@
       "responseType": "XRAY_JSON"
     },
     {
+      "name": "SINGBOX",
+      "description": "Allow sing-box clients to get the FreemanVPN routing template",
+      "enabled": true,
+      "operator": "AND",
+      "conditions": [
+        {
+          "headerName": "user-agent",
+          "operator": "REGEX",
+          "value": "^sfa|sfi|sfm|sft|karing|sing-box|singbox",
+          "caseSensitive": false
+        }
+      ],
+      "responseType": "SINGBOX",
+      "responseModifications": {
+        "subscriptionTemplate": "Default Singbox",
+        "excludeHostsByTags": [
+          "V2RAYTUN_ONLY"
+        ]
+      }
+    },
+    {
       "name": "Fallback Base64",
       "description": "System critical: do not delete or disable this rule.",
       "enabled": true,

@@ -199,6 +199,12 @@ jobs:
           printf 'incy://routing/onadd/%s\n' "$whitelist_b64" > INCY/WHITELIST.DEEPLINK
           printf 'incy://routing/onadd/%s\n' "$jsonsub_b64" > INCY/JSONSUB.DEEPLINK
 
+      - name: Update SINGBOX geodata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/update-singbox-geodata.py SINGBOX/DEFAULT.JSON
+
       - name: Detect routing changes
         id: routing_change
         shell: bash
@@ -216,19 +222,22 @@ jobs:
             if ! git diff --quiet "$EVENT_BEFORE" "$EVENT_SHA" -- \
               XRAY_JSON/DEFAULT.JSON \
               XRAY_JSON/LEASTLOAD.settings.json \
+              SINGBOX/DEFAULT.JSON \
               response_rules.json \
               scripts/render-xray-json.sh \
               scripts/render-xray-least-load.sh \
               scripts/render-v2raytun.py \
+              scripts/update-singbox-geodata.py \
               scripts/sync-remnawave-routing.sh \
               scripts/tests/test_remnawave_sync.py \
+              scripts/tests/test_singbox.py \
               scripts/tests/test_v2raytun.py \
               .github/workflows/update-configs.yml; then
               xray_source_changed=true
             fi
           fi
 
-          if git diff --quiet -- HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK \
+          if git diff --quiet -- HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK SINGBOX/DEFAULT.JSON \
             && [[ "$xray_source_changed" == "false" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -244,7 +253,7 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          git add HAPP/DEFAULT.JSON HAPP/WHITELIST.JSON HAPP/JSONSUB.JSON HAPP/DEFAULT.DEEPLINK HAPP/WHITELIST.DEEPLINK HAPP/JSONSUB.DEEPLINK INCY/DEFAULT.JSON INCY/WHITELIST.JSON INCY/JSONSUB.JSON INCY/DEFAULT.DEEPLINK INCY/WHITELIST.DEEPLINK INCY/JSONSUB.DEEPLINK
+          git add HAPP/DEFAULT.JSON HAPP/WHITELIST.JSON HAPP/JSONSUB.JSON HAPP/DEFAULT.DEEPLINK HAPP/WHITELIST.DEEPLINK HAPP/JSONSUB.DEEPLINK INCY/DEFAULT.JSON INCY/WHITELIST.JSON INCY/JSONSUB.JSON INCY/DEFAULT.DEEPLINK INCY/WHITELIST.DEEPLINK INCY/JSONSUB.DEEPLINK SINGBOX/DEFAULT.JSON
 
           if git diff --cached --quiet; then
             exit 0
@@ -455,11 +464,33 @@ jobs:
       REMNAWAVE_LEASTLOAD_TEMPLATE_UUID: ${{ vars.REMNAWAVE_LEASTLOAD_TEMPLATE_UUID }}
       REMNAWAVE_V2RAYTUN_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_TEMPLATE_UUID }}
       REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID }}
+      REMNAWAVE_SINGBOX_TEMPLATE_UUID: ${{ vars.REMNAWAVE_SINGBOX_TEMPLATE_UUID }}
       HAPP_DEFAULT: ${{ needs.update.outputs.happ_default }}
       INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Check out the synchronization commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "${{ github.ref_name }}"
+          git reset --hard "origin/${{ github.ref_name }}"
+
+      - name: Install sing-box for validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=1.13.12
+          arch="$(dpkg --print-architecture)"
+          archive="/tmp/sing-box-${version}.tar.gz"
+          curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused \
+            -o "$archive" \
+            "https://github.com/SagerNet/sing-box/releases/download/v${version}/sing-box-${version}-linux-${arch}.tar.gz"
+          tar -xzf "$archive" -C /tmp
+          sudo install "/tmp/sing-box-${version}-linux-${arch}/sing-box" /usr/local/bin/sing-box
+          sing-box version
 
       - name: Test Remnawave synchronization
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
