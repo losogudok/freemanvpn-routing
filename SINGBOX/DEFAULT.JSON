@@ -200,154 +200,154 @@
         "type": "remote",
         "tag": "geosite-private",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/private.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/private.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-category-ru",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/category-ru.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/category-ru.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-whitelist",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/whitelist.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/whitelist.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-apple",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/apple.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/apple.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-epicgames",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/epicgames.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/epicgames.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-riot",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/riot.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/riot.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-escapefromtarkov",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/escapefromtarkov.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/escapefromtarkov.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-steam",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/steam.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/steam.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-twitch",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/twitch.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/twitch.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-pinterest",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/pinterest.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/pinterest.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-faceit",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/faceit.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/faceit.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-blizzard",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/blizzard.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/blizzard.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-ip-checkers",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/ip-checkers.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/ip-checkers.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-spotify",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/spotify.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/spotify.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-google-play",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/google-play.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/google-play.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-github",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/github.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/github.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-twitch-ads",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/twitch-ads.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/twitch-ads.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-youtube",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/youtube.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/youtube.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-telegram",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/telegram.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/telegram.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-win-spy",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/win-spy.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/win-spy.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-torrent",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/torrent.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/torrent.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geosite-category-ads",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@66732c76ccaafc50967c47b6283c8bff3d5f1c9c/sing-box/category-ads.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geosite@ac346be5fd9385d23787c560f1d809c0ee4b497c/sing-box/category-ads.srs",
         "download_detour": "direct"
       },
       {
