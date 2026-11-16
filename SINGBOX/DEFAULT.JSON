@@ -354,21 +354,21 @@
         "type": "remote",
         "tag": "geoip-private",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@cd6af8fea4edf9bdd19a88af7a79f73e8f66ebce/sing-box/private.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@37e5af7d1a78e663b172c62484d6abce50ad2f66/sing-box/private.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geoip-direct",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@cd6af8fea4edf9bdd19a88af7a79f73e8f66ebce/sing-box/direct.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@37e5af7d1a78e663b172c62484d6abce50ad2f66/sing-box/direct.srs",
         "download_detour": "direct"
       },
       {
         "type": "remote",
         "tag": "geoip-blizzard",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@cd6af8fea4edf9bdd19a88af7a79f73e8f66ebce/sing-box/blizzard.srs",
+        "url": "https://cdn.jsdelivr.net/gh/losogudok/freemanvpn-geoip@37e5af7d1a78e663b172c62484d6abce50ad2f66/sing-box/blizzard.srs",
         "download_detour": "direct"
       }
     ],
