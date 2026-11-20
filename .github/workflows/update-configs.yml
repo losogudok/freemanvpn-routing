@@ -627,6 +627,32 @@ jobs:
           name: xray-json
           path: dist/xray-json
 
+      - name: Diagnose panel connectivity without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          panel_host="$(python3 -c 'import os, urllib.parse; print(urllib.parse.urlsplit(os.environ["REMNAWAVE_API_BASE_URL"]).hostname or "")')"
+          echo "[NET-DIAG] System DNS for $panel_host:"
+          getent ahostsv4 "$panel_host" || true
+          echo "[NET-DIAG] Public DNS for $panel_host:"
+          curl -fsS --connect-timeout 5 --max-time 10 --get \
+            --data-urlencode "name=$panel_host" --data-urlencode 'type=A' \
+            https://dns.google/resolve | jq '{Status, Answer}' || true
+          for mode in default ipv4-http1 tls12; do
+            probe_options=()
+            if [[ "$mode" == ipv4-http1 ]]; then probe_options=(-4 --http1.1); fi
+            if [[ "$mode" == tls12 ]]; then probe_options=(-4 --http1.1 --tlsv1.2 --tls-max 1.2); fi
+            echo "[NET-DIAG] Panel probe: $mode (HTTP 401 is expected without a token)"
+            if curl "${probe_options[@]}" -sS \
+              --connect-timeout 10 --max-time 15 -o /dev/null \
+              -w 'HTTP=%{http_code} peer=%{remote_ip} connect=%{time_connect}s TLS=%{time_appconnect}s verify=%{ssl_verify_result}\n' \
+              "${REMNAWAVE_API_BASE_URL%/}/subscription-templates"; then
+              echo "[NET-DIAG] Probe completed"
+            else
+              echo "[NET-DIAG] Probe failed with curl exit code $?"
+            fi
+          done
+
       - name: Synchronize routing templates and client headers
         shell: bash
         run: bash scripts/sync-remnawave-routing.sh dist/xray-json
