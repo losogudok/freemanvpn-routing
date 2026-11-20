@@ -68,6 +68,12 @@
 
 Виртуальный хост с автоматическим выбором сервера: [генерация YouTube Auto-шаблона из DEFAULT](docs/runbooks/xray-json-least-load.md).
 
+**🇷🇺 Российский IP для пользователей за рубежом:** отдельный Host с российскими
+направлениями через RU-сервер и остальным трафиком напрямую.
+[Готовый шаблон для Remnawave](https://github.com/losogudok/freemanvpn-routing/releases/download/russian-ip/RUSSIAN_IP.JSON)
+собирается и проверяется в CI из FreemanVPN GeoIP/Geosite.
+[Инструкция установки и описание состава списков](docs/runbooks/russian-ip.md).
+
 <table width="100%">
 <thead><tr><th align="left">Способ</th><th align="left">Ссылка</th><th align="left">Описание</th></tr></thead>
 <tbody>
@@ -242,6 +248,7 @@ GitHub Actions:
 - Разворачивает FreemanVPN geo-категории в домены/CIDR и синхронизирует самодостаточный XRAY_JSON шаблон v2RayTun с Remnawave
 - Синхронизирует DEFAULT-роутинг HAPP, INCY, XRAY_JSON и sing-box с Remnawave как одну транзакцию
 - Проверяет sing-box конфигурацию и паритет с XRAY_JSON
+- Отдельный workflow **Build Russian IP** проверяет оба JSON в Xray, публикует [релиз Russian IP](https://github.com/losogudok/freemanvpn-routing/releases/tag/russian-ip) с версиями геоданных и SHA256 и обновляет отдельный шаблон Remnawave по `REMNAWAVE_RU_IP_TEMPLATE_UUID`
 - Коммитит изменения автоматически
 
 ## 🔗 Связанные проекты

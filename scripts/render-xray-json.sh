@@ -22,9 +22,12 @@ latest_tag() {
     | sed -n '1p'
 }
 
-geoip_tag="$(latest_tag "$GEOIP_REPO")"
-geosite_tag="$(latest_tag "$GEOSITE_REPO")"
-[[ -n "$geoip_tag" && -n "$geosite_tag" ]]
+geoip_tag="${FREEMAN_GEOIP_TAG:-$(latest_tag "$GEOIP_REPO")}"
+geosite_tag="${FREEMAN_GEOSITE_TAG:-$(latest_tag "$GEOSITE_REPO")}"
+[[ "$geoip_tag" =~ ^[0-9]{12}$ && "$geosite_tag" =~ ^[0-9]{12}$ ]] || {
+  echo "FreemanVPN geodata tags must contain 12 digits" >&2
+  exit 1
+}
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf -- "$work_dir"' EXIT
