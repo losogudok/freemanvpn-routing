@@ -13,25 +13,30 @@ Workflow автоматически обновляет отдельный шаб
 
 Готовый файл для установки:
 [RUSSIAN_IP.JSON](https://github.com/losogudok/freemanvpn-routing/releases/download/russian-ip/RUSSIAN_IP.JSON).
-Он появится после первого успешного запуска **Build Russian IP** на `main`.
+Он обновляется после успешной сборки в **Update Routing Configs** на `main`.
 Это шаблон Remnawave: данные подключения и outbound `proxy` добавляет панель.
 
-## CI/CD: сборка, публикация и обновление Remnawave
+## CI/CD: общий pipeline
 
-Workflow [Build Russian IP](../../.github/workflows/build-russian-ip.yml)
-запускается при изменении исходника или скриптов сборки в `main`, по событию
+Russian IP включён в [Update Routing Configs](../../.github/workflows/update-configs.yml).
+Отдельного workflow, renderer или скрипта синхронизации для него нет.
+Сборка запускается при push в `main`, по событию
 `repository_dispatch: update-routing-configs` от geo-репозиториев и вручную.
-На pull request выполняются сборка и проверки без публикации и обращения
+На pull request выполняется job `build-xray` без публикации и обращения
 к рабочей панели.
 
-Сборка выбирает последние числовые release tags обоих FreemanVPN-репозиториев
-один раз. Эти версии используются и для скачивания DAT, и для развёртывания
-списков: между двумя вариантами JSON геоданные не меняются.
-Xray закреплён в workflow по версии и SHA256 архива. Сначала проверяется
-компактный исходник с DAT из сборок, затем развёрнутый JSON с пустым каталогом
-geo-файлов. Если любой сценарий не проходит, публикации не происходит.
+Job `build-xray` выбирает версии FreemanVPN GeoIP/Geosite один раз и использует
+общий [render-xray-json.sh](../../scripts/render-xray-json.sh) для DEFAULT
+и Russian IP. Auto строится из уже развёрнутого DEFAULT. Xray закреплён
+по версии и SHA256 архива. Проверяются общая синхронизация и 25 сценариев
+Russian IP для каждого варианта: компактного с DAT из сборок и развёрнутого
+с пустым каталогом geo-файлов.
 
-После успешной сборки доступны:
+Все JSON сохраняются в Actions artifact `xray-json` на 30 дней:
+`default.json`, `leastload.json` и каталог `russian-ip/`.
+В общем `SHA256SUMS` записаны суммы всех файлов комплекта.
+Job `publish-xray` публикует содержимое `russian-ip/` в
+[GitHub Release `russian-ip`](https://github.com/losogudok/freemanvpn-routing/releases/tag/russian-ip):
 
 | Файл | Назначение |
 | --- | --- |
@@ -40,45 +45,41 @@ geo-файлов. Если любой сценарий не проходит, п
 | `build-info.json` | Git commit исходников, версия Xray, теги, URL и SHA256 обоих DAT |
 | `SHA256SUMS` | Контрольные суммы двух JSON и метаданных |
 
-Файлы сохраняются в Actions artifact `russian-ip` на 30 дней. Для событий на
-`main` отдельный job с правом `contents: write` публикует их также в
-[GitHub Release `russian-ip`](https://github.com/losogudok/freemanvpn-routing/releases/tag/russian-ip).
-Этот релиз обновляется при каждой успешной сборке; его URL остаётся постоянным.
-Для скачивания используйте `/releases/download/russian-ip/…`, а не
-`/releases/latest/download/…`. Публикация использует штатный `GITHUB_TOKEN`,
-отдельные secrets и доступ к Remnawave ей не нужны.
+Релиз обновляется после успешной сборки на `main`; URL остаётся постоянным.
+Используйте `/releases/download/russian-ip/…`, а не
+`/releases/latest/download/…`. Публикация использует штатный `GITHUB_TOKEN`.
 
-Первый запуск после публикации изменений: **Actions → Build Russian IP →
-Run workflow → main**. Для ручного запуска на другой ветке будет доступен
-только artifact, публичный релиз не изменится.
-
-После публикации job **sync-remnawave** скачивает тот же Actions artifact,
-проверяет `SHA256SUMS` и отправляет развёрнутый `RUSSIAN_IP.JSON` в панель.
-Повторного развёртывания геоданных при синхронизации нет.
-
-В GitHub **Settings → Secrets and variables → Actions** должны быть заданы:
+Для обновления панели в GitHub **Settings → Secrets and variables → Actions**
+нужны существующие настройки общей синхронизации и UUID Russian IP:
 
 | Тип | Имя | Значение |
 | --- | --- | --- |
-| Repository variable | `REMNAWAVE_API_BASE_URL` | Адрес API панели с `/api`, как в существующей синхронизации |
+| Repository variable | `REMNAWAVE_API_BASE_URL` | Адрес API панели с `/api` |
 | Repository variable | `REMNAWAVE_RU_IP_TEMPLATE_UUID` | UUID отдельного шаблона типа Xray JSON для RU Host |
-| Repository secret | `REMNAWAVE_TOKEN` | Существующий API-токен с доступом к subscription templates |
+| Repository secret | `REMNAWAVE_TOKEN` | API-токен с доступом к subscription templates и subscription settings |
 
-Если настройки отсутствуют или UUID указывает на шаблон другого типа,
-синхронизация завершается ошибкой. Шаблон нужно один раз создать в панели
-и назначить Host по инструкции ниже; имя шаблона может быть любым.
+Job `sync-remnawave` использует общий
+[sync-remnawave-routing.sh](../../scripts/sync-remnawave-routing.sh).
+Он скачивает тот же artifact, проверяет контрольные суммы и обновляет
+DEFAULT, Auto, настроенные compact/sing-box шаблоны, Russian IP и заголовки
+подписки в одной транзакции. Повторной сборки JSON перед PATCH нет.
+Проверяются ответ PATCH и сохранённое содержимое через GET; при сбое
+восстанавливаются все затронутые шаблоны и настройки. Неудачный откат
+отмечается в логе, job остаётся красным. Имена шаблонов и назначения Host
+синхронизация не меняет.
 
-[sync-russian-ip.sh](../../scripts/sync-russian-ip.sh) обновляет только
-`templateJson` выбранного UUID, проверяет ответ PATCH и повторно читает
-шаблон через GET. Если содержимое уже совпадает, записи нет. Если запись
-или проверка завершилась с ошибкой, скрипт восстанавливает предыдущий JSON
-и проверяет сохранённое состояние; job остаётся красным даже после успешного
-отката. Ошибка отката явно выводится в лог. Имя шаблона, назначения Host,
-DEFAULT/Auto и Response Rules этот job не меняет.
+Если `REMNAWAVE_RU_IP_TEMPLATE_UUID` не задана, общий pipeline пропускает
+обновление RU-шаблона, продолжая обслуживать остальные цели. Если UUID
+задан, но отсутствует, имеет неверный тип или совпадает с другой управляемой
+целью, вся синхронизация останавливается до записей. Сам шаблон нужно один
+раз создать в панели и назначить Host по инструкции ниже.
 
-Релиз публикуется до обновления панели. При ошибке API релиз остаётся
-доступным, а красный job **sync-remnawave** можно перезапустить после
-устранения причины. UUID и токен не передаются в artifact или release.
+Первый запуск после настройки UUID: **Actions → Update Routing Configs →
+Run workflow → main → force_sync: true**. Этот флаг нужен также для ручного
+повторного обновления панели, когда исходники и геоданные не менялись.
+Релиз публикуется до синхронизации; при сетевой ошибке панели он остаётся
+доступным. После исправления доступа можно перезапустить job
+`sync-remnawave` или запустить workflow с `force_sync: true`.
 
 ## Политика
 
@@ -127,35 +128,26 @@ freemanvpn-geoip и freemanvpn-geosite**, а не стандартные geo-ф�
 Для обычной выдачи Remnawave можно развернуть категории в домены и CIDR
 штатным renderer, как для DEFAULT. Источниками остаются сборки FreemanVPN.
 
-Из корня freemanvpn-routing:
+Для ручной сборки из корня freemanvpn-routing нужны `bash`, `git`, `jq`,
+`python3` и установленный Xray:
 
 ```sh
-bash scripts/build-russian-ip.sh /tmp/russian-ip-build /path/to/xray
+bash scripts/render-xray-json.sh XRAY_JSON/RUSSIAN_IP.JSON /tmp/russian-ip.json
+python3 scripts/check-russian-ip.py /tmp/russian-ip.json
 ```
 
-Нужны `bash`, `git`, `curl`, `jq`, `python3`, `sha256sum` и Xray версии из
-workflow. Команда выполняет те же проверки, что CI, и пишет четыре файла
-из таблицы выше. Можно передать установленные `xray` вместо `/path/to/xray`
-или опустить второй аргумент, если он доступен в `PATH`.
-
-Для повторения версий геоданных из скачанного `build-info.json`:
-
-```sh
-FREEMAN_GEOIP_TAG="$(jq -r '.geoip.tag' /tmp/russian-ip-build/build-info.json)" \
-FREEMAN_GEOSITE_TAG="$(jq -r '.geosite.tag' /tmp/russian-ip-build/build-info.json)" \
-  bash scripts/build-russian-ip.sh /tmp/russian-ip-rebuild /path/to/xray
-```
-
-Если нужна только генерация развёрнутого файла без полного цикла проверок:
-
-```sh
-python3 scripts/render-russian-ip.py /tmp/russian-ip.json
-```
-
-[render-russian-ip.py](../../scripts/render-russian-ip.py) вызывает
-существующий `render-xray-json.sh`. Он берёт последние числовые release tags
+Общий renderer берёт последние числовые release tags
 `losogudok/freemanvpn-geoip` и `losogudok/freemanvpn-geosite` и разворачивает
-категории из опубликованных CIDR/доменных списков. Загрузок v2fly нет.
+категории из опубликованных CIDR/доменных списков. Сторонняя страновая база
+не загружается.
+
+Чтобы повторить версии геоданных из скачанного `build-info.json`:
+
+```sh
+FREEMAN_GEOIP_TAG="$(jq -r '.geoip.tag' /tmp/russian-ip-install/build-info.json)" \
+FREEMAN_GEOSITE_TAG="$(jq -r '.geosite.tag' /tmp/russian-ip-install/build-info.json)" \
+  bash scripts/render-xray-json.sh XRAY_JSON/RUSSIAN_IP.JSON /tmp/russian-ip.json
+```
 
 В обычный шаблон панели вставляется **развёрнутый `RUSSIAN_IP.JSON`** из релиза
 или локальной сборки.

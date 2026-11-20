@@ -7,6 +7,15 @@ on:
         description: 'Run sync-remnawave even without routing changes'
         type: boolean
         default: false
+  pull_request:
+    paths:
+      - XRAY_JSON/**
+      - scripts/render-xray-json.sh
+      - scripts/render-xray-least-load.sh
+      - scripts/check-russian-ip.py
+      - scripts/sync-remnawave-routing.sh
+      - scripts/tests/test_remnawave_sync.py
+      - .github/workflows/update-configs.yml
   push:
     branches:
       - main
@@ -21,11 +30,129 @@ permissions:
   contents: write
 
 concurrency:
-  group: update-routing-configs
+  group: update-routing-configs-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  build-xray:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test routing synchronization
+        run: python3 -m unittest discover -s scripts/tests -p 'test_remnawave_sync.py' -v
+
+      - name: Install Xray
+        shell: bash
+        env:
+          XRAY_VERSION: v26.11.9
+          XRAY_SHA256: b651f7e1d9966ee2c1b1ee1bf8b52c72771824d3065dce96bbc8bcc19ed95f82
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/Xray-linux-64.zip"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$archive" \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
+          printf '%s  %s\n' "$XRAY_SHA256" "$archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP/xray"
+          chmod +x "$RUNNER_TEMP/xray/xray"
+
+      - name: Build and validate Xray JSON templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_tag() {
+            git ls-remote --tags "https://github.com/${1}.git" \
+              | awk '{print $2}' | sed -E 's@refs/tags/@@; s@\^\{\}@@' \
+              | grep -E '^[0-9]{12}$' | sort -r | sed -n '1p'
+          }
+          FREEMAN_GEOIP_TAG="$(latest_tag losogudok/freemanvpn-geoip)"
+          FREEMAN_GEOSITE_TAG="$(latest_tag losogudok/freemanvpn-geosite)"
+          export FREEMAN_GEOIP_TAG FREEMAN_GEOSITE_TAG
+          [[ "$FREEMAN_GEOIP_TAG" =~ ^[0-9]{12}$ && "$FREEMAN_GEOSITE_TAG" =~ ^[0-9]{12}$ ]]
+          bundle=dist/xray-json
+          ru_dir="$bundle/russian-ip"
+          assets="$RUNNER_TEMP/freemanvpn-assets"
+          xray="$RUNNER_TEMP/xray/xray"
+          mkdir -p "$ru_dir" "$assets"
+          geoip_url="https://raw.githubusercontent.com/losogudok/freemanvpn-geoip/${FREEMAN_GEOIP_TAG}/release/geoip.dat"
+          geosite_url="https://raw.githubusercontent.com/losogudok/freemanvpn-geosite/${FREEMAN_GEOSITE_TAG}/release/geosite.dat"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$assets/geoip.dat" "$geoip_url"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$assets/geosite.dat" "$geosite_url"
+          bash scripts/render-xray-json.sh XRAY_JSON/DEFAULT.JSON "$bundle/default.json"
+          bash scripts/render-xray-least-load.sh --rendered "$bundle/default.json" "$bundle/leastload.json"
+          bash scripts/render-xray-json.sh XRAY_JSON/RUSSIAN_IP.JSON "$ru_dir/RUSSIAN_IP.JSON"
+          python3 scripts/check-russian-ip.py XRAY_JSON/RUSSIAN_IP.JSON --xray "$xray" --assets "$assets"
+          python3 scripts/check-russian-ip.py "$ru_dir/RUSSIAN_IP.JSON" --xray "$xray"
+          cp XRAY_JSON/RUSSIAN_IP.JSON "$ru_dir/RUSSIAN_IP.compact.JSON"
+          jq -n --arg commit "$GITHUB_SHA" --arg xray "$("$xray" version | sed -n '1p')" \
+            --arg geoip_tag "$FREEMAN_GEOIP_TAG" --arg geoip_url "$geoip_url" \
+            --arg geoip_sha256 "$(sha256sum "$assets/geoip.dat" | awk '{print $1}')" \
+            --arg geosite_tag "$FREEMAN_GEOSITE_TAG" --arg geosite_url "$geosite_url" \
+            --arg geosite_sha256 "$(sha256sum "$assets/geosite.dat" | awk '{print $1}')" \
+            '{sourceCommit: $commit, xrayVersion: $xray,
+              geoip: {tag: $geoip_tag, url: $geoip_url, sha256: $geoip_sha256},
+              geosite: {tag: $geosite_tag, url: $geosite_url, sha256: $geosite_sha256}}' \
+            > "$ru_dir/build-info.json"
+          (cd "$ru_dir" && sha256sum RUSSIAN_IP.JSON RUSSIAN_IP.compact.JSON build-info.json > SHA256SUMS)
+          (cd "$bundle" && sha256sum default.json leastload.json russian-ip/* > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xray-json
+          path: dist/xray-json/
+          if-no-files-found: error
+          retention-days: 30
+
+
+  publish-xray:
+    needs: build-xray
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: xray-json
+          path: dist/xray-json
+
+      - name: Verify published files
+        working-directory: dist/xray-json/russian-ip
+        run: sha256sum --check SHA256SUMS
+
+      - name: Publish Russian IP release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/russian-ip-notes.md"
+          cat > "$notes" <<'EOF'
+          Russian IP templates built from FreemanVPN GeoIP and Geosite releases.
+
+          - RUSSIAN_IP.JSON: expanded Remnawave template; client DAT files are not required.
+          - RUSSIAN_IP.compact.JSON: requires FreemanVPN DAT files supplied by the subscription/client.
+          - build-info.json: source commit, geodata versions and DAT checksums.
+          - SHA256SUMS: checksums of both templates and build metadata.
+
+          Installation: https://github.com/losogudok/freemanvpn-routing/blob/main/docs/runbooks/russian-ip.md
+          EOF
+          if gh release view russian-ip --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload russian-ip dist/xray-json/russian-ip/* --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit russian-ip --notes-file "$notes" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create russian-ip dist/xray-json/russian-ip/* --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Russian IP" --notes-file "$notes" --latest=false
+          fi
+
+
   update:
+    needs: build-xray
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       happ_default: ${{ steps.deeplinks.outputs.happ_default }}
@@ -35,6 +162,7 @@ jobs:
       incy_whitelist: ${{ steps.deeplinks.outputs.incy_whitelist }}
       incy_json: ${{ steps.deeplinks.outputs.incy_json }}
       routing_changed: ${{ steps.routing_change.outputs.changed }}
+      source_commit: ${{ steps.deeplinks.outputs.source_commit }}
 
     steps:
       - uses: actions/checkout@v6
@@ -221,10 +349,12 @@ jobs:
             && [[ ! "$EVENT_BEFORE" =~ ^0+$ ]]; then
             if ! git diff --quiet "$EVENT_BEFORE" "$EVENT_SHA" -- \
               XRAY_JSON/DEFAULT.JSON \
+              XRAY_JSON/RUSSIAN_IP.JSON \
               XRAY_JSON/LEASTLOAD.settings.json \
               SINGBOX/DEFAULT.JSON \
               response_rules.json \
               scripts/render-xray-json.sh \
+              scripts/check-russian-ip.py \
               scripts/render-xray-least-load.sh \
               scripts/render-v2raytun.py \
               scripts/update-singbox-geodata.py \
@@ -266,6 +396,7 @@ jobs:
         id: deeplinks
         shell: bash
         run: |
+          echo "source_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "happ_default=$(tr -d '\n\r' < HAPP/DEFAULT.DEEPLINK)" >> "$GITHUB_OUTPUT"
           echo "happ_whitelist=$(tr -d '\n\r' < HAPP/WHITELIST.DEEPLINK)" >> "$GITHUB_OUTPUT"
           echo "happ_json=$(tr -d '\n\r' < HAPP/JSONSUB.DEEPLINK)" >> "$GITHUB_OUTPUT"
@@ -453,7 +584,7 @@ jobs:
           fi
 
   sync-remnawave:
-    needs: update
+    needs: [update, build-xray, publish-xray]
     if: needs.update.outputs.routing_changed == 'true' || inputs.force_sync == true
     runs-on: ubuntu-latest
 
@@ -465,18 +596,14 @@ jobs:
       REMNAWAVE_V2RAYTUN_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_TEMPLATE_UUID }}
       REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID }}
       REMNAWAVE_SINGBOX_TEMPLATE_UUID: ${{ vars.REMNAWAVE_SINGBOX_TEMPLATE_UUID }}
+      REMNAWAVE_RU_IP_TEMPLATE_UUID: ${{ vars.REMNAWAVE_RU_IP_TEMPLATE_UUID }}
       HAPP_DEFAULT: ${{ needs.update.outputs.happ_default }}
       INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: Check out the synchronization commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --depth=1 origin "${{ github.ref_name }}"
-          git reset --hard "origin/${{ github.ref_name }}"
+        with:
+          ref: ${{ needs.update.outputs.source_commit }}
 
       - name: Install sing-box for validation
         shell: bash
@@ -495,6 +622,11 @@ jobs:
       - name: Test Remnawave synchronization
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
-      - name: Build and synchronize shared and compact v2rayTun routing
+      - uses: actions/download-artifact@v4
+        with:
+          name: xray-json
+          path: dist/xray-json
+
+      - name: Synchronize routing templates and client headers
         shell: bash
-        run: bash scripts/sync-remnawave-routing.sh
+        run: bash scripts/sync-remnawave-routing.sh dist/xray-json

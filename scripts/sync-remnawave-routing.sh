@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if (( $# > 1 )); then
+  echo "Usage: $0 [RENDERED_DIR]" >&2
+  exit 2
+fi
+
 : "${REMNAWAVE_API_BASE_URL:?Set the REMNAWAVE_API_BASE_URL repository variable}"
 : "${REMNAWAVE_TOKEN:?Set the REMNAWAVE_TOKEN repository secret}"
 : "${HAPP_DEFAULT:?Missing HAPP_DEFAULT}"
@@ -14,9 +19,17 @@ settings_json="$repo_dir/XRAY_JSON/LEASTLOAD.settings.json"
 work_dir="$(mktemp -d "$RUNNER_TEMP/remnawave-sync.XXXXXX")"
 trap 'rm -rf -- "$work_dir"' EXIT
 
-# Both templates must use the exact same rendered geodata snapshot.
-"$script_dir/render-xray-json.sh" "$repo_dir/XRAY_JSON/DEFAULT.JSON" "$work_dir/default.json"
-"$script_dir/render-xray-least-load.sh" --rendered "$work_dir/default.json" "$work_dir/leastload.json"
+# CI supplies the validated bundle; local callers can render it on demand.
+rendered_dir=""
+if (( $# == 1 )); then
+  rendered_dir="$(cd -- "$1" && pwd)"
+  (cd -- "$rendered_dir" && sha256sum --check SHA256SUMS) > /dev/null
+  cp -- "$rendered_dir/default.json" "$work_dir/default.json"
+  cp -- "$rendered_dir/leastload.json" "$work_dir/leastload.json"
+else
+  "$script_dir/render-xray-json.sh" "$repo_dir/XRAY_JSON/DEFAULT.JSON" "$work_dir/default.json"
+  "$script_dir/render-xray-least-load.sh" --rendered "$work_dir/default.json" "$work_dir/leastload.json"
+fi
 
 TEMPLATES_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-templates"
 SETTINGS_URL="${REMNAWAVE_API_BASE_URL%/}/subscription-settings"
@@ -48,6 +61,40 @@ jq \
     else null end
 ' <<< "$TEMPLATES_LIST" > "$work_dir/compact-targets.json"
 compact_enabled="$(jq '. != null' "$work_dir/compact-targets.json")"
+
+# Russian IP uses an explicit UUID and participates in the same transaction.
+ru_uuid="${REMNAWAVE_RU_IP_TEMPLATE_UUID:-}"
+ru_enabled=false
+if [[ -n "$ru_uuid" ]]; then
+  ru_enabled=true
+  [[ "$ru_uuid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
+    echo "REMNAWAVE_RU_IP_TEMPLATE_UUID must be a UUID" >&2
+    exit 1
+  }
+  jq -e --arg uuid "$ru_uuid" '
+    [(.response // .).templates[] | select(.uuid == $uuid and .templateType == "XRAY_JSON")]
+    | length == 1
+  ' <<< "$TEMPLATES_LIST" > /dev/null || {
+    echo "REMNAWAVE_RU_IP_TEMPLATE_UUID must identify one XRAY_JSON template" >&2
+    exit 1
+  }
+  get_json "$TEMPLATES_URL/$ru_uuid" > "$work_dir/current-russian-ip.json"
+  jq -e --arg uuid "$ru_uuid" '
+    (.response // .)
+    | .uuid == $uuid and .templateType == "XRAY_JSON" and (.templateJson | type == "object")
+  ' "$work_dir/current-russian-ip.json" > /dev/null
+  if [[ -n "$rendered_dir" ]]; then
+    cp -- "$rendered_dir/russian-ip/RUSSIAN_IP.JSON" "$work_dir/russian-ip.json"
+  else
+    "$script_dir/render-xray-json.sh" "$repo_dir/XRAY_JSON/RUSSIAN_IP.JSON" "$work_dir/russian-ip.json"
+  fi
+  jq -e 'type == "object" and .remnawave.addVirtualHostAsOutbound == true' \
+    "$work_dir/russian-ip.json" > /dev/null
+  if jq -e '.. | strings | select(test("^(geosite|geoip):"))' "$work_dir/russian-ip.json" > /dev/null; then
+    echo "Russian IP synchronization requires expanded geodata" >&2
+    exit 1
+  fi
+fi
 
 # The sing-box template is optional during rollout: only manage it when both
 # the committed source and the panel template named Default Singbox exist.
@@ -83,11 +130,11 @@ else
 fi
 
 TEMPLATE_UUID="$(
-  jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" \
+  jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" --arg ru "$ru_uuid" \
     --slurpfile compact "$work_dir/compact-targets.json" '
     (.response // .).templates
     | if type != "array" then error("unexpected subscription templates response") else . end
-    | [.[] | select(.templateType == "XRAY_JSON")
+    | [.[] | select(.templateType == "XRAY_JSON" and .uuid != $ru)
         | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)] as $templates
     | [$templates[] | select(.name == "Default Xray JSON")] as $named
     | [$templates[] | select(.uuid == $pinned)] as $byUuid
@@ -108,10 +155,10 @@ fi
 
 # List responses omit content. Inspect each JSON template to find the pool,
 # rejecting absent/ambiguous matches before any PATCH. An optional UUID pins it.
-jq -er --arg default "$TEMPLATE_UUID" --arg pinned "${REMNAWAVE_LEASTLOAD_TEMPLATE_UUID:-}" \
+jq -er --arg default "$TEMPLATE_UUID" --arg pinned "${REMNAWAVE_LEASTLOAD_TEMPLATE_UUID:-}" --arg ru "$ru_uuid" \
   --slurpfile compact "$work_dir/compact-targets.json" '
   (.response // .).templates
-  | [.[] | select(.templateType == "XRAY_JSON" and .uuid != $default)
+  | [.[] | select(.templateType == "XRAY_JSON" and .uuid != $default and .uuid != $ru)
       | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)
       | select($pinned == "" or .uuid == $pinned) | .uuid]
   | .[]
@@ -166,6 +213,11 @@ if [[ "$singbox_enabled" == "true" ]]; then
   rendered_templates+=("$singbox_source")
   current_responses+=("$work_dir/current-singbox.json")
 fi
+if [[ -n "$ru_uuid" ]]; then
+  template_uuids+=("$ru_uuid")
+  rendered_templates+=("$work_dir/russian-ip.json")
+  current_responses+=("$work_dir/current-russian-ip.json")
+fi
 if (( $(printf '%s\n' "${template_uuids[@]}" | sort -u | wc -l) != ${#template_uuids[@]} )); then
   echo "All managed template UUIDs must be different" >&2
   exit 1
@@ -174,7 +226,8 @@ fi
 for i in "${!template_uuids[@]}"; do
   # Preserve existing listener ports in both Auto variants. Empty compact
   # templates inherit DEFAULT's ports on their first sync.
-  if (( i == 1 || i == 3 )); then
+  if [[ "${template_uuids[$i]}" == "${pool_uuids[0]}" \
+    || "${template_uuids[$i]}" == "${compact_auto_uuid:-}" ]]; then
     jq -e --slurpfile current "${current_responses[$i]}" '
       (.inbounds // []) |= map(
         . as $inbound
@@ -362,7 +415,10 @@ rollback() {
     if rollback_response="$(patch_template "$work_dir/rollback-$i.json")" \
       && jq -e --slurpfile expected "$work_dir/current-$i.json" \
         '(.response // .).templateJson == $expected[0]' \
-        <<< "$rollback_response" > /dev/null; then
+        <<< "$rollback_response" > /dev/null \
+      && get_json "$TEMPLATES_URL/${template_uuids[$i]}" > "$work_dir/rollback-readback-$i.json" \
+      && jq -e --slurpfile expected "$work_dir/current-$i.json" \
+        '(.response // .).templateJson == $expected[0]' "$work_dir/rollback-readback-$i.json" > /dev/null; then
       echo "Rolled back Remnawave template ${template_uuids[$i]}" >&2
     else
       echo "Failed to roll back Remnawave template ${template_uuids[$i]}" >&2
@@ -383,6 +439,9 @@ for i in "${!template_uuids[@]}"; do
   jq -e --slurpfile tpl "${rendered_templates[$i]}" \
     '(.response // .).templateJson == $tpl[0]' \
     <<< "$TEMPLATE_PATCH_RESPONSE" > /dev/null
+  get_json "$TEMPLATES_URL/${template_uuids[$i]}" > "$work_dir/readback-$i.json" || rollback
+  jq -e --slurpfile tpl "${rendered_templates[$i]}" \
+    '(.response // .).templateJson == $tpl[0]' "$work_dir/readback-$i.json" > /dev/null
 done
 
 settings_updated=true
@@ -397,4 +456,4 @@ jq -e --argjson expected "$SETTINGS_PATCH_PAYLOAD" '
 ' <<< "$SETTINGS_PATCH_RESPONSE" > /dev/null
 
 trap - ERR
-echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled)"
+echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled, Russian IP: $ru_enabled)"

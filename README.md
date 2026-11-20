@@ -248,7 +248,7 @@ GitHub Actions:
 - Разворачивает FreemanVPN geo-категории в домены/CIDR и синхронизирует самодостаточный XRAY_JSON шаблон v2RayTun с Remnawave
 - Синхронизирует DEFAULT-роутинг HAPP, INCY, XRAY_JSON и sing-box с Remnawave как одну транзакцию
 - Проверяет sing-box конфигурацию и паритет с XRAY_JSON
-- Отдельный workflow **Build Russian IP** проверяет оба JSON в Xray, публикует [релиз Russian IP](https://github.com/losogudok/freemanvpn-routing/releases/tag/russian-ip) с версиями геоданных и SHA256 и обновляет отдельный шаблон Remnawave по `REMNAWAVE_RU_IP_TEMPLATE_UUID`
+- Общий workflow **Update Routing Configs** собирает и проверяет Russian IP, публикует [релиз](https://github.com/losogudok/freemanvpn-routing/releases/tag/russian-ip) и обновляет шаблон по `REMNAWAVE_RU_IP_TEMPLATE_UUID` в общей транзакции Remnawave
 - Коммитит изменения автоматически
 
 ## 🔗 Связанные проекты

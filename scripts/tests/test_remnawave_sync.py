@@ -3,6 +3,7 @@
 import copy
 import base64
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -20,6 +21,7 @@ OTHER_UUID = "33333333-3333-4333-8333-333333333333"
 COMPACT_UUID = "44444444-4444-4444-8444-444444444444"
 COMPACT_AUTO_UUID = "55555555-5555-4555-8555-555555555555"
 SINGBOX_UUID = "66666666-6666-4666-8666-666666666666"
+RU_UUID = "77777777-7777-4777-8777-777777777777"
 BASE = {
     "remnawave": {"addVirtualHostAsOutbound": True},
     "dns": {"hosts": {"fresh-policy.invalid": "192.0.2.123"}},
@@ -95,6 +97,9 @@ class SyncTest(unittest.TestCase):
         self.happ_payload = "new-happ"
         self.compact_pins = ("", "")
         self.singbox_pin = ""
+        self.ru_pin = ""
+        self.rendered_dir = None
+        self.readback_failure = None
         self.rollback_failure = None
         test = self
 
@@ -113,7 +118,12 @@ class SyncTest(unittest.TestCase):
                     # The real listing omits content, requiring detail GETs.
                     self.respond({"templates": [{**v, "templateJson": None} for v in test.templates.values()]})
                 elif self.path.startswith("/api/subscription-templates/"):
-                    self.respond(test.templates[self.path.rsplit("/", 1)[1]])
+                    uuid = self.path.rsplit("/", 1)[1]
+                    if test.readback_failure == uuid and uuid in test.patches:
+                        test.readback_failure = None
+                        self.respond({}, 500)
+                    else:
+                        self.respond(test.templates[uuid])
                 elif self.path == "/api/subscription-settings":
                     self.respond(test.settings)
                 else:
@@ -139,6 +149,11 @@ class SyncTest(unittest.TestCase):
                 elif test.failure == "mismatch:" + target:
                     test.failure = None
                     self.respond({})
+                elif test.failure == "persisted:" + target:
+                    test.failure = None
+                    response = copy.deepcopy(obj)
+                    test.templates[target]["templateJson"] = {"incorrect": "persisted state"}
+                    self.respond(response)
                 else:
                     self.respond(obj)
 
@@ -160,9 +175,131 @@ class SyncTest(unittest.TestCase):
                "REMNAWAVE_V2RAYTUN_TEMPLATE_UUID": self.compact_pins[0],
                "REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID": self.compact_pins[1],
                "REMNAWAVE_SINGBOX_TEMPLATE_UUID": self.singbox_pin,
+               "REMNAWAVE_RU_IP_TEMPLATE_UUID": self.ru_pin,
                "TEST_RENDER_LOG": str(self.root / "renders.log")}
-        return subprocess.run(["bash", str(self.root / "scripts/sync-remnawave-routing.sh")],
+        command = ["bash", str(self.root / "scripts/sync-remnawave-routing.sh")]
+        if self.rendered_dir is not None:
+            command.append(str(self.rendered_dir))
+        return subprocess.run(command,
                               env=env, capture_output=True, text=True, timeout=20)
+
+    def add_russian_ip_template(self):
+        self.ru_pin = RU_UUID
+        self.ru_source = copy.deepcopy(BASE)
+        self.ru_source["outbounds"] = [{"tag": "direct", "protocol": "freedom"}]
+        self.ru_source["routing"] = {"domainStrategy": "IPOnDemand", "rules": [
+            {"domain": ["domain:ru"], "outboundTag": "proxy"},
+            {"ip": ["77.88.55.60/32"], "outboundTag": "proxy"},
+            {"network": "tcp,udp", "outboundTag": "direct"},
+        ]}
+        (self.root / "XRAY_JSON/RUSSIAN_IP.JSON").write_text(json.dumps(self.ru_source))
+        self.templates[RU_UUID] = {
+            "uuid": RU_UUID, "name": "User-chosen Russian IP name", "templateType": "XRAY_JSON",
+            "templateJson": {"old": "Russian IP policy"},
+        }
+        self.initial_templates = copy.deepcopy(self.templates)
+
+    def test_russian_ip_is_updated_with_shared_templates_and_headers(self):
+        self.add_russian_ip_template()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.patches, [DEFAULT_UUID, POOL_UUID, RU_UUID, "settings"])
+        self.assertEqual(self.templates[RU_UUID]["templateJson"], self.ru_source)
+        self.assertEqual(self.templates[RU_UUID]["name"], "User-chosen Russian IP name")
+
+    def test_russian_ip_works_with_compact_and_singbox_templates(self):
+        self.add_compact_templates()
+        self.add_singbox_template()
+        self.add_russian_ip_template()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.patches, [
+            DEFAULT_UUID, POOL_UUID, COMPACT_UUID, COMPACT_AUTO_UUID, SINGBOX_UUID, RU_UUID, "settings",
+        ])
+        self.assertEqual(self.templates[RU_UUID]["templateJson"], self.ru_source)
+
+    def test_singbox_does_not_make_russian_ip_inherit_auto_ports(self):
+        self.add_singbox_template()
+        self.add_russian_ip_template()
+        self.templates[RU_UUID]["templateJson"]["inbounds"] = [
+            {"tag": "http", "protocol": "http", "port": 10999},
+        ]
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.templates[RU_UUID]["templateJson"]["inbounds"], self.ru_source["inbounds"])
+
+    def test_invalid_russian_ip_target_aborts_transaction_before_writing(self):
+        self.add_russian_ip_template()
+        for pin in ("not-a-uuid", OTHER_UUID, DEFAULT_UUID, POOL_UUID):
+            with self.subTest(pin=pin):
+                self.ru_pin = pin
+                self.assertNotEqual(self.run_sync().returncode, 0)
+                self.assertEqual(self.patches, [])
+        self.ru_pin = RU_UUID
+        self.templates[RU_UUID]["templateType"] = "SINGBOX"
+        self.assertNotEqual(self.run_sync().returncode, 0)
+        self.assertEqual(self.patches, [])
+
+    def test_unexpanded_russian_ip_is_rejected_before_writing(self):
+        self.add_russian_ip_template()
+        self.ru_source["routing"]["rules"][1]["ip"] = ["geoip:direct"]
+        (self.root / "XRAY_JSON/RUSSIAN_IP.JSON").write_text(json.dumps(self.ru_source))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expanded geodata", result.stderr)
+        self.assertEqual(self.patches, [])
+
+    def test_russian_ip_failures_restore_entire_transaction(self):
+        self.add_russian_ip_template()
+        for failure in (RU_UUID, "mismatch:" + RU_UUID, "persisted:" + RU_UUID, "settings"):
+            with self.subTest(failure=failure):
+                self.patches = []
+                self.failure = failure
+                result = self.run_sync()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.templates, self.initial_templates)
+                self.assertEqual(self.settings, self.initial_settings)
+                self.assertIn("Rolled back Remnawave template " + RU_UUID, result.stderr)
+        self.patches = []
+        self.readback_failure = RU_UUID
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.templates, self.initial_templates)
+        self.assertEqual(self.settings, self.initial_settings)
+
+    def test_large_russian_ip_payload_uses_file_based_patch(self):
+        self.add_russian_ip_template()
+        self.ru_source["routing"]["rules"][0]["domain"] = [
+            f"full:service-{index}.ru" for index in range(30_000)
+        ]
+        (self.root / "XRAY_JSON/RUSSIAN_IP.JSON").write_text(json.dumps(self.ru_source))
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.templates[RU_UUID]["templateJson"], self.ru_source)
+
+    def test_validated_bundle_is_used_without_rendering_again(self):
+        self.add_russian_ip_template()
+        self.rendered_dir = self.root / "bundle"
+        (self.rendered_dir / "russian-ip").mkdir(parents=True)
+        (self.rendered_dir / "default.json").write_text(json.dumps(BASE))
+        subprocess.run(["bash", str(self.root / "scripts/render-xray-least-load.sh"),
+                        "--rendered", str(self.rendered_dir / "default.json"),
+                        str(self.rendered_dir / "leastload.json")], check=True)
+        ru_path = self.rendered_dir / "russian-ip/RUSSIAN_IP.JSON"
+        ru_path.write_text(json.dumps(self.ru_source))
+        files = ["default.json", "leastload.json", "russian-ip/RUSSIAN_IP.JSON"]
+        (self.rendered_dir / "SHA256SUMS").write_text("".join(
+            f"{hashlib.sha256((self.rendered_dir / name).read_bytes()).hexdigest()}  {name}\n"
+            for name in files))
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "renders.log").exists())
+        self.assertEqual(self.templates[RU_UUID]["templateJson"], self.ru_source)
+        self.patches = []
+        ru_path.write_text('{}')
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.patches, [])
 
     def add_compact_templates(self):
         self.templates[COMPACT_UUID] = {"uuid": COMPACT_UUID, "name": "V2RayTun Compact",
