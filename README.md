@@ -63,7 +63,7 @@
 </tbody>
 </table>
 
-Для INCY используется `XRAY_BASE64`: список отдельных серверов плюс заголовок `routing` из [`INCY/DEFAULT.DEEPLINK`](INCY/DEFAULT.DEEPLINK). Правило `INCY` в [`response_rules.json`](response_rules.json) исключает только хосты с новым тегом `INCY_EXCLUDE`; добавьте этот тег только виртуальному хосту, сохранив его для остальных клиентов. `excludeHostsByTags` поддерживается в Remnawave 3.4.5. Общая выдача Happ использует Base64; JSON включён отдельным персональным правилом. Пользователь выбирает отдельный сервер; кастомный балансировщик INCY не получает. Настройка панели и проверка — в [инструкции](docs/runbooks/incy-server-links.md).
+Для INCY используется `XRAY_BASE64`: список отдельных серверов плюс заголовок `routing` из [`INCY/DEFAULT.DEEPLINK`](INCY/DEFAULT.DEEPLINK). Правило `INCY` в [`response_rules.json`](response_rules.json) исключает только хосты с новым тегом `INCY_EXCLUDE`; добавьте этот тег только виртуальному хосту, сохранив его для остальных клиентов. `excludeHostsByTags` поддерживается в Remnawave 3.4.5. Общее правило Happ выдаёт compact Xray JSON всем подпискам с User-Agent Happ, включая Auto и российский IP. Пользователь выбирает отдельный сервер; кастомный балансировщик INCY не получает. Настройка панели и проверка — в [инструкции](docs/runbooks/incy-server-links.md).
 
 
 ## 📱 Установка для v2RayTun

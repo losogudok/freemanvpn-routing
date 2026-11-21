@@ -1,26 +1,20 @@
-# Happ: compact Xray JSON with FreemanVPN DAT
+# Happ compact Xray JSON
 
-For shared client deployments, use [the consolidation plan](shared-client-routing.md).
-Reuse the same compact DEFAULT/Auto/RU templates across compatible clients;
-do not create another client-named copy. The separate-client setup below
-is retained as the original rollout procedure.
+С 2026-11-22 общее правило `HAPP` выдаёт compact JSON всем подпискам,
+запрошенным с User-Agent Happ. Обычные серверы используют `Xray Compact`,
+Auto и российский IP — общие `Xray Auto Compact` и `Russian IP Compact`.
+Назначения и UUID описаны в [каталоге общих конфигов](shared-client-routing.md).
 
-Personal panel setup was applied on 2026-11-21. See the
-[device acceptance report](happ-compact-acceptance-2026-11-21.md) for verified
-behavior and remaining limits.
+## Сборка и геоданные
 
-The rollout is personal until the Android acceptance below passes. General
-`HAPP` delivery stays Base64. The three compact policies come from
-`XRAY_JSON/DEFAULT.JSON`, DEFAULT plus the existing Auto pool settings, and
-`XRAY_JSON/RUSSIAN_IP.JSON`. The generator preserves DNS, FakeDNS, sniffing,
-listeners and route order. Only Auto's proxy destinations use the balancer.
+Политики берутся из `XRAY_JSON/DEFAULT.JSON`, DEFAULT с настройками Auto-пула
+и `XRAY_JSON/RUSSIAN_IP.JSON`. Генераторы Happ и v2RayTun используют общий
+`scripts/xray_templates.py`, сохраняя DNS, FakeDNS, sniffing и порядок правил.
+В Auto назначения proxy заменяются балансировщиком.
 
-## Build and checks
-
-`build-xray` selects both numeric geo release tags once. The same downloaded
-DAT files, SHA256 values and pinned URLs are used to validate all three
-compact templates, the expanded policies, and the Happ routing profile.
-No `Geoipurl` or `Geositeurl` fields are injected into Xray JSON.
+`build-xray` один раз выбирает закреплённые geo release tags и скачивает DAT.
+Их SHA256, URL и содержимое используются для проверки compact-шаблонов,
+expanded-политик и routing-профиля Happ в одной сборке.
 
 ```sh
 python3 scripts/render-happ.py dist/xray-json/happ \
@@ -29,100 +23,66 @@ python3 scripts/check-happ.py dist/xray-json/happ \
   --assets /path/to/downloaded-dat --xray /path/to/xray
 ```
 
-The profile derives Tunnel DNS settings from `HAPP/JSONSUB.JSON`, uses
-`UseChunkFiles: "false"`, and supplies no shared direct/proxy/block lists.
-Each JSON keeps its own rules, including RU's special DNS policy.
-The bundle contains `default.json`, `leastload.json`, `russian-ip.json`,
-`routing.json`, `routing.deeplink`, and `build-info.json` under `happ/`.
-All files are covered by the outer `SHA256SUMS`. The profile name stays
-`FreemanVPN JSON` so Happ updates the existing entity by name; `LastUpdated`
-uses the newest geo release time in Unix seconds.
+В bundle `happ/` входят `default.json`, `leastload.json`, `russian-ip.json`,
+`routing.json`, `routing.deeplink` и `build-info.json`, покрытые общим
+`SHA256SUMS`. Минимальный routing-профиль называется `FreemanVPN JSON`,
+содержит Tunnel DNS и URL DAT, `UseChunkFiles: "false"` и пустые списки правил.
+Правила маршрутизации остаются внутри полного JSON каждого сервера.
+`LastUpdated` — время последнего из двух geo-релизов в Unix seconds.
 
-The workflow's `update` job consumes that artifact rather than looking up
-new geo tags for Happ. `HAPP/JSONSUB.JSON` and `.DEEPLINK` are refreshed
-from it; DEFAULT and WHITELIST keep their policies and use the same geo URLs.
-INCY's existing update logic remains independent.
+DEFAULT и WHITELIST нативных профилей HAPP/INCY генерируются из общего
+источника политик и используют те же закреплённые геоданные; минимальный
+JSONSUB предназначен для доставки полных JSON.
 
-[Happ's JSON subscription contract](https://github.com/HappDev/happ_su/blob/main/dev-docs/routing.md)
-requires the routing profile to be bundled with JSON; rules remain in JSON.
-DAT URLs belong in that profile, as described in the
-[link parameters](https://github.com/HappDev/happ_su/blob/main/dev-docs/examples-of-links-and-parameters.md).
+## Настройка общего правила
 
-## Personal panel setup
+Сначала прочитайте действующие правила и назначения, сохраните полный
+снимок приватно. Используйте существующие shared compact шаблоны,
+не создавая отдельные копии Happ. Все три UUID переменные обязательны:
 
-Read current Response Rules, Host assignments and template names before the
-first setup. Save their full contents privately for rollback. Never store
-subscription identifiers or credentials in this repository.
-
-Create three separate XRAY_JSON templates and configure these repository
-variables (all three are required together):
-
-| Variable | Suggested template name |
+| Переменная | Шаблон |
 | --- | --- |
-| `REMNAWAVE_HAPP_TEMPLATE_UUID` | `Happ Compact` |
-| `REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID` | `Happ Auto Compact` |
-| `REMNAWAVE_HAPP_RU_TEMPLATE_UUID` | `Happ Russian IP Compact` |
+| `REMNAWAVE_HAPP_TEMPLATE_UUID` | `Xray Compact`, тот же UUID, что у v2RayTun DEFAULT |
+| `REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID` | `Xray Auto Compact`, тот же UUID, что у v2RayTun Auto |
+| `REMNAWAVE_HAPP_RU_TEMPLATE_UUID` | `Russian IP Compact` |
 
-Create an Auto Host on the existing virtual inbound, with its new compact
-Auto template, and an RU Host on the existing RU inbound with its new compact
-RU template. Tag both **only `HAPP_ONLY`**. Do not give these clones the
-legacy Auto exclusion tags or `RUSSIAN_IP` tag. Keep existing Host assignments
-for other clients. Ordinary server Hosts need no changes: the personal rule
-selects `Happ Compact` as its default template.
+Правило `HAPP` должно быть enabled, с оператором AND и единственным условием:
+User-Agent CONTAINS `happ`, `caseSensitive: false`. Оно располагается до fallback.
+Привязки к подписке в общем правиле нет. Предыдущее персональное правило
+`HAPP_PRIVATE_RUSSIAN_IP` удаляется при согласованном общем включении.
 
-The existing `HAPP_PRIVATE_RUSSIAN_IP` rule must be enabled, precede `HAPP`,
-and use AND conditions matching Happ's user-agent and exactly one personal
-`x-remnawave-injected-short-uuid`. Synchronization validates that scope;
-it preserves the conditions and position. It sets JSON delivery, the compact
-default, `ignoreHostXrayJsonTemplate: false`, and the bundled routing header.
-It excludes legacy Auto, the v2RayTun-only Auto and the old RU entry.
-All other non-browser rules exclude `HAPP_ONLY`, isolating the new entries.
-The script never creates Hosts or templates or broadens the personal scope.
+Настройки общего правила:
+
+- `responseType: XRAY_JSON`, `subscriptionTemplate: Xray Compact`.
+- `ignoreHostXrayJsonTemplate: false` сохраняет назначения Auto/RU.
+- `applyHeadersToEnd: true`, `ignoreServeJsonAtBaseSubscription: true`.
+- Заголовок `routing` — минимальный `happ://routing/onadd/...` из bundle.
+- `excludeHostsByTags: ["XRAY_EXPANDED_ONLY"]`; фильтр `XRAY_COMPACT_ONLY`
+  в этом правиле скрывал бы нужные Auto/RU Host.
 
 ```sh
 # Existing API/token, HAPP_DEFAULT, INCY_DEFAULT and RUNNER_TEMP are also required.
 bash scripts/sync-remnawave-routing.sh dist/xray-json
 ```
 
-The synchronizer requires a validated bundle for Happ, resolves every target
-before PATCH, and includes all three templates in the existing transaction.
-PATCH responses and GET readbacks verify template content and subscription
-settings. An uncertain write, mismatch or readback failure rolls back settings
-and attempted templates; failed rollback is reported explicitly. Existing
-Auto listener ports are preserved. Host creation/assignment is a separate
-one-time operation and must be reverted using the saved Host snapshot if
-personal acceptance fails.
+Синхронизация требует проверенный bundle и перед PATCH проверяет условия
+общего правила. Для старых установок с персональным правилом она сохраняет
+его scope; сама не создаёт и не удаляет правила или Host, не меняет условия.
+Содержимое шаблонов и управляемые поля правил обновляются транзакционно,
+проверяются ответом PATCH и повторным GET. При неопределённом результате или
+ошибке чтения восстанавливаются исходные настройки и затронутые шаблоны.
+Каждый shared UUID записывается и откатывается один раз.
 
-## Android acceptance and limits
+## Проверка выдачи и клиента
 
-Current local evidence (2026-11-21): generation tests and API fixture checks
-pass; all three templates parse in Xray 26.11.9 with GeoIP `202611211053`
-and Geosite `202611071812`. The exact workflow build step also passes
-with the pinned official Xray 26.11.9 binary, including 25 compact and 25
-expanded RU routing checks. Both review axes found no confirmed code defects;
-50 unit/integration tests and actionlint pass. This is validation of compact categories and
-configuration syntax, not evidence of a successful mobile connection.
+При смене scope проверяйте как прежнюю персональную подписку, так и другую
+действующую подписку Happ с её существующим HWID. Ответ должен быть HTTP 200
+с массивом JSON, минимальным routing header и единственными Auto/RU в пределах
+доступных пользователю Host. Проверяйте ссылки outbound/balancer и parsing
+каждого JSON с DAT этой сборки. Ответы остальных клиентов должны сохраниться.
 
-Pending production/device acceptance:
-
-1. Capture pre-change personal/general Happ responses and other client
-   responses. Verify the general rule remains Base64 after personal setup.
-2. Freshly import the personal subscription and update its existing import.
-   Confirm both DAT downloads and active categories without relying on old
-   cache. Record app/core versions and resulting payload sizes.
-3. Connect ordinary VLESS/Reality and XHTTP entries. Verify direct/proxy/block,
-   DNS, FakeDNS and sniffing through the actual phone tunnel.
-4. Connect Auto. Fail the selected endpoint only for the test, verify new
-   connections switch after health checks. Fail the whole test pool, verify
-   proxy traffic blocks and intended direct routes still work; restore it.
-5. Connect RU. Verify RU destinations use proxy, other destinations direct,
-   and RU DNS uses its JSON policy. Distinguish route logs from service
-   accessibility and from a real test on a foreign network. A shared RU bridge
-   inbound may forward proxy destinations to Germany; the compact client
-   cannot fix its server routing. See [Russian IP](russian-ip.md).
-6. Ping real profiles both connected and disconnected. Record numeric results
-   and whether `Ping checking` actually finishes, separately. A small prior
-   SOCKS experiment produced numbers but a stuck connected indicator; that
-   is not proof that real-profile ping or the UI defect is fixed.
-7. Restore the previous panel snapshot on failure. General rollout needs
-   successful personal acceptance; it is not enabled by this implementation.
+[Отчёт Android-приёмки 2026-11-21](happ-compact-acceptance-2026-11-21.md)
+описывает исходный персональный этап. Общее правило меняет аудиторию выдачи,
+а не подтверждает работу всех версий и платформ Happ. Сохраняется известное
+ограничение индикатора `Ping checking` при включённом VPN. Проверка RU на
+российском подключении не заменяет проверку с зарубежной сети.

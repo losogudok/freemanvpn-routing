@@ -41,8 +41,8 @@ get_json() {
 
 TEMPLATES_LIST="$(get_json "$TEMPLATES_URL")"
 
-# Happ stays opt-in until the personal Android acceptance is complete.
-# Dedicated Host assignments use these three UUIDs; shared client templates stay intact.
+# Happ compact delivery uses these three UUIDs. A legacy private rule keeps
+# its scope; without it, the general HAPP rule serves every Happ subscription.
 happ_enabled=false
 happ_uuids=("${REMNAWAVE_HAPP_TEMPLATE_UUID:-}" "${REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID:-}" "${REMNAWAVE_HAPP_RU_TEMPLATE_UUID:-}")
 printf 'null\n' > "$work_dir/happ-target.json"
@@ -333,7 +333,9 @@ SETTINGS_PATCH_PAYLOAD="$(
       | ([$rules | to_entries[] | select(.value.name == "THRONE" or .value.name == "XRAY_JSON_CLIENTS") | .key] | .[0]) as $throne_index
       | ([$rules | to_entries[] | select((.value.conditions // null) == []) | .key] | .[0]) as $fallback_index
       | ([$rules | to_entries[] | select(.value.name == "HAPP_PRIVATE_RUSSIAN_IP") | .key]) as $private
-      | if $happ_target[0] != null and (
+      | ([$rules | to_entries[] | select(.value.name == "HAPP") | .key]) as $happ_indices
+      | (if ($private | length) == 0 then "HAPP" else "HAPP_PRIVATE_RUSSIAN_IP" end) as $happ_rule_name
+      | if $happ_target[0] != null and ($private | length) > 0 and (
           ($private | length) != 1 or $private[0] >= ([$rules | to_entries[] | select(.value.name == "HAPP") | .key][0])
           or $rules[$private[0]].enabled != true or $rules[$private[0]].operator != "AND"
           or (any($rules[$private[0]].conditions[]?; .headerName == "x-remnawave-injected-short-uuid"
@@ -341,6 +343,14 @@ SETTINGS_PATCH_PAYLOAD="$(
           or (any($rules[$private[0]].conditions[]?; .headerName == "user-agent"
               and .operator == "CONTAINS" and (.value | ascii_downcase) == "happ" and .caseSensitive == false) | not)
         ) then error("Happ requires an enabled personal AND rule before HAPP with exact short UUID and Happ user-agent conditions")
+        elif $happ_target[0] != null and ($private | length) == 0 and (
+          ($happ_indices | length) != 1
+          or $rules[$happ_indices[0]].enabled != true or $rules[$happ_indices[0]].operator != "AND"
+          or ($rules[$happ_indices[0]].conditions | length) != 1
+          or (any($rules[$happ_indices[0]].conditions[]?; .headerName == "user-agent"
+              and .operator == "CONTAINS" and (.value | ascii_downcase) == "happ" and .caseSensitive == false) | not)
+          or ($fallback_index != null and $happ_indices[0] > $fallback_index)
+        ) then error("General Happ delivery requires one enabled HAPP AND rule with only the Happ user-agent condition before fallback")
         elif $settings.responseRules == null then
           error("responseRules is null in subscription settings; create Response Rules in the panel first")
         elif ([$rules[] | select(.name == "HAPP")] | length) != 1 then
@@ -384,7 +394,7 @@ SETTINGS_PATCH_PAYLOAD="$(
             responseRules: (
               $settings.responseRules
               | .rules |= map(
-                  if .name == "HAPP_PRIVATE_RUSSIAN_IP" and $happ_target[0] != null then
+                  if .name == $happ_rule_name and $happ_target[0] != null then
                     .responseType = "XRAY_JSON"
                     | .responseModifications.subscriptionTemplate = $happ_target[0].name
                     | .responseModifications.ignoreHostXrayJsonTemplate = false
@@ -430,7 +440,7 @@ SETTINGS_PATCH_PAYLOAD="$(
                   else
                     .
                   end
-                  | if $happ_target[0] != null and .name != "HAPP_PRIVATE_RUSSIAN_IP"
+                  | if $happ_target[0] != null and .name != $happ_rule_name
                       and .responseType != "BROWSER" then
                       .responseModifications.excludeHostsByTags = (
                         ((.responseModifications.excludeHostsByTags // []) + ["HAPP_ONLY"]) | unique)
@@ -449,8 +459,8 @@ SETTINGS_PATCH_PAYLOAD="$(
                       | .responseModifications.excludeHostsByTags = (
                           (.responseModifications.excludeHostsByTags // [])
                           | map(select(. != "HAPP_ONLY" and . != "V2RAYTUN_ONLY"))
-                          | if $rule.name == "V2RAYTUN" or $rule.name == "HAPP_PRIVATE_RUSSIAN_IP" then
-                              map(select(. != "HAPP_EXCLUDE" and . != "V2RAYTUN_EXCLUDE" and . != "RUSSIAN_IP"))
+                          | if $rule.name == "V2RAYTUN" or $rule.name == $happ_rule_name then
+                              map(select(. != "HAPP_EXCLUDE" and . != "V2RAYTUN_EXCLUDE" and . != "RUSSIAN_IP" and . != "XRAY_COMPACT_ONLY"))
                               + ["XRAY_EXPANDED_ONLY"]
                             else . + ["XRAY_COMPACT_ONLY"] end
                           | unique)
@@ -574,4 +584,4 @@ jq -e --argjson expected "$SETTINGS_PATCH_PAYLOAD" '
 ' "$work_dir/settings-readback.json" > /dev/null
 
 trap - ERR
-echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled, Russian IP: $ru_enabled, Happ personal: $happ_enabled)"
+echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled, Russian IP: $ru_enabled, Happ compact: $happ_enabled)"

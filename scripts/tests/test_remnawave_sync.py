@@ -301,6 +301,28 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(self.patches, [])
         self.assertIn("conflicting Happ/v2RayTun policies", result.stderr)
 
+    def test_happ_all_subscriptions_receive_shared_compact_delivery(self):
+        self.share_happ_and_v2raytun_templates()
+        rules = self.settings["responseRules"]["rules"]
+        rules[:] = [rule for rule in rules if rule["name"] != "HAPP_PRIVATE_RUSSIAN_IP"]
+        happ = next(rule for rule in rules if rule["name"] == "HAPP")
+        happ.update(enabled=True, operator="AND", responseType="XRAY_BASE64", conditions=[
+            {"headerName": "user-agent", "operator": "CONTAINS", "value": "happ", "caseSensitive": False}])
+        happ["responseModifications"]["excludeHostsByTags"] = ["HAPP_EXCLUDE", "XRAY_COMPACT_ONLY"]
+        conditions = copy.deepcopy(happ["conditions"])
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        actual = next(rule for rule in self.settings["responseRules"]["rules"] if rule["name"] == "HAPP")
+        self.assertEqual(actual["conditions"], conditions)
+        self.assertEqual(actual["responseType"], "XRAY_JSON")
+        mods = actual["responseModifications"]
+        self.assertEqual(mods["subscriptionTemplate"], self.templates[COMPACT_UUID]["name"])
+        self.assertFalse(mods["ignoreHostXrayJsonTemplate"])
+        self.assertEqual(mods["excludeHostsByTags"], ["XRAY_EXPANDED_ONLY"])
+        self.assertIn({"key": "routing", "value": self.happ_link}, mods["headers"])
+        self.assertEqual(self.patches.count(COMPACT_UUID), 1)
+        self.assertEqual(self.patches.count(COMPACT_AUTO_UUID), 1)
+
     def test_shared_compact_rollback_restores_each_target_once(self):
         self.share_happ_and_v2raytun_templates()
         self.failure = "settings"
