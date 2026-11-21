@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
-import subprocess
+from xray_templates import write_compact_templates
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -31,12 +31,7 @@ def render(output, build_info):
     profile["LastUpdated"] = str(int(updated.timestamp()))
     for field in ("DirectSites", "DirectIp", "ProxySites", "ProxyIp", "BlockSites", "BlockIp"):
         profile[field] = []
-    output.mkdir(parents=True, exist_ok=True)
-    for source, target in (("DEFAULT.JSON", "default.json"), ("RUSSIAN_IP.JSON", "russian-ip.json")):
-        data = json.loads((REPO / "XRAY_JSON" / source).read_text())
-        (output / target).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
-    subprocess.run(["bash", str(REPO / "scripts/render-xray-least-load.sh"), "--rendered",
-                    str(output / "default.json"), str(output / "leastload.json")], check=True)
+    write_compact_templates(output)
     encoded = json.dumps(profile, ensure_ascii=False, separators=(",", ":"))
     (output / "routing.json").write_text(encoded + "\n")
     (output / "routing.deeplink").write_text("happ://routing/onadd/" + base64.b64encode(encoded.encode()).decode() + "\n")

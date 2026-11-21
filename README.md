@@ -25,6 +25,8 @@
 
 ---
 
+Политики для Happ, INCY и v2RayTun поддерживаются из общего источника `XRAY_JSON/`. Нативные профили Happ/INCY и compact JSON генерируются автоматически; порядок объединения шаблонов, правил ответов и Host описан в [плане устранения дубликатов](docs/runbooks/shared-client-routing.md).
+
 ## 📱 Установка для Happ
 
 <table width="100%">
@@ -61,7 +63,7 @@
 </tbody>
 </table>
 
-Для INCY используется `XRAY_BASE64`: список отдельных серверов плюс заголовок `routing` из [`INCY/DEFAULT.DEEPLINK`](INCY/DEFAULT.DEEPLINK). Правило `INCY` в [`response_rules.json`](response_rules.json) исключает только хосты с новым тегом `INCY_EXCLUDE`; добавьте этот тег только виртуальному хосту, сохранив его для остальных клиентов. `excludeHostsByTags` поддерживается в Remnawave 3.4.5. Happ сохраняет `XRAY_JSON`. Пользователь выбирает отдельный сервер; кастомный балансировщик INCY не получает. Настройка панели и проверка — в [инструкции](docs/runbooks/incy-server-links.md).
+Для INCY используется `XRAY_BASE64`: список отдельных серверов плюс заголовок `routing` из [`INCY/DEFAULT.DEEPLINK`](INCY/DEFAULT.DEEPLINK). Правило `INCY` в [`response_rules.json`](response_rules.json) исключает только хосты с новым тегом `INCY_EXCLUDE`; добавьте этот тег только виртуальному хосту, сохранив его для остальных клиентов. `excludeHostsByTags` поддерживается в Remnawave 3.4.5. Общая выдача Happ использует Base64; JSON включён отдельным персональным правилом. Пользователь выбирает отдельный сервер; кастомный балансировщик INCY не получает. Настройка панели и проверка — в [инструкции](docs/runbooks/incy-server-links.md).
 
 
 ## 📱 Установка для v2RayTun
@@ -98,7 +100,7 @@
 > Для v2RayTun Android 5.26.83+ доступен [компактный вариант подписки](docs/runbooks/v2raytun-compact-json.md): geo-файлы скачиваются через заголовки `geoipurl` / `geositeurl`, а JSON содержит короткие ссылки на категории. GitHub Actions автоматически собирает и публикует этот вариант при наличии шаблонов `V2RayTun Compact` и `V2RayTun Auto Compact`; Auto-хосту нужны отдельное назначение и тег из инструкции.
 
 > [!NOTE]
-> **DNS** — конфиг уже содержит DoH Google (8.8.8.8) и Яндекс (77.88.8.8) с раздельным резолвингом и статикой для `lkfl2.nalog.ru` / `lknpd.nalog.ru` — идентично профилям Happ и INCY, дополнительная настройка не требуется. При ручном импорте WHITELIST/JSONSUB v2RayTun добавит ваш активный сервер в конфиг сам.
+> **DNS** — конфиг уже содержит DoH Google (8.8.8.8) и Яндекс (77.88.8.8) с раздельным резолвингом и статикой для `lkfl2.nalog.ru` / `lknpd.nalog.ru` — адреса DNS и статические записи общие с профилями Happ и INCY; фильтры выбора DNS зависят от формата клиента. При ручном импорте WHITELIST/JSONSUB v2RayTun добавит ваш активный сервер в конфиг сам.
 
 ## 📱 Установка для sing-box
 

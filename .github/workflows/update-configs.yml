@@ -11,6 +11,9 @@ on:
     paths:
       - XRAY_JSON/**
       - HAPP/JSONSUB.JSON
+      - scripts/render-routing-profiles.py
+      - scripts/tests/test_routing_profiles.py
+      - scripts/xray_templates.py
       - scripts/render-happ.py
       - scripts/check-happ.py
       - scripts/tests/test_happ.py
@@ -50,6 +53,8 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/tests -p 'test_remnawave_sync.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_happ.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_v2raytun.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_routing_profiles.py' -v
 
       - name: Install Xray
         shell: bash
@@ -182,103 +187,12 @@ jobs:
           name: xray-json
           path: dist/xray-json
 
-      - name: Update HAPP configs from validated geodata snapshot
+      - name: Generate HAPP and INCY profiles from the shared Xray policy
         shell: bash
         run: |
           set -euo pipefail
           (cd dist/xray-json && sha256sum --check SHA256SUMS)
-          info=dist/xray-json/happ/build-info.json
-          geoip_url="$(jq -r '.geoip.url' "$info")"
-          geosite_url="$(jq -r '.geosite.url' "$info")"
-          timestamp="$(jq -r '.LastUpdated' dist/xray-json/happ/routing.json)"
-          for mode in DEFAULT WHITELIST; do
-            jq --arg geoip "$geoip_url" --arg geosite "$geosite_url" --arg timestamp "$timestamp" \
-              '.Geoipurl = $geoip | .Geositeurl = $geosite | .LastUpdated = $timestamp' \
-              "HAPP/$mode.JSON" > "$RUNNER_TEMP/happ.json"
-            mv "$RUNNER_TEMP/happ.json" "HAPP/$mode.JSON"
-            printf 'happ://routing/onadd/%s\n' "$(jq -c . "HAPP/$mode.JSON" | base64 -w 0)" > "HAPP/$mode.DEEPLINK"
-          done
-          cp dist/xray-json/happ/routing.json HAPP/JSONSUB.JSON
-          cp dist/xray-json/happ/routing.deeplink HAPP/JSONSUB.DEEPLINK
-
-      - name: Update INCY configs
-        shell: bash
-        run: |
-          set -euo pipefail
-          export TZ=UTC
-
-          GEOIP_REPO="losogudok/freemanvpn-geoip"
-          GEOSITE_REPO="losogudok/freemanvpn-geosite"
-
-          latest_tag() {
-            git ls-remote --tags "https://github.com/${1}.git" \
-              | awk '{print $2}' \
-              | sed -E 's@refs/tags/@@; s@\^\{\}@@' \
-              | grep -E '^[0-9]{12}$' \
-              | sort -r \
-              | head -n 1
-          }
-
-          epoch_to_tag_utc() {
-            local e="${1:-0}"
-            if [[ "$e" =~ ^[0-9]+$ ]] && (( e > 0 )); then
-              date -u -d "@$e" +%Y%m%d%H%M
-            else
-              printf '000000000000'
-            fi
-          }
-
-          current_epoch="$(jq -r '.LastUpdated // empty' INCY/DEFAULT.JSON 2>/dev/null || true)"
-          [[ "$current_epoch" =~ ^[0-9]+$ ]] || current_epoch="0"
-          current_tag="$(epoch_to_tag_utc "$current_epoch")"
-
-          geoip_tag="$(latest_tag "$GEOIP_REPO")"
-          geosite_tag="$(latest_tag "$GEOSITE_REPO")"
-          [[ -n "$geoip_tag" && -n "$geosite_tag" ]]
-
-          max_tag="$(printf "%s\n%s\n" "$geoip_tag" "$geosite_tag" | sort -r | head -n 1)"
-
-          if [[ "$current_tag" < "$max_tag" ]]; then
-            now_epoch="$(date -u +%s)"
-            geoip_url="https://cdn.jsdelivr.net/gh/${GEOIP_REPO}/release/geoip.dat"
-            geosite_url="https://cdn.jsdelivr.net/gh/${GEOSITE_REPO}/release/geosite.dat"
-
-            curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -I "$geoip_url" >/dev/null
-            curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -I "$geosite_url" >/dev/null
-
-            tmp="$(mktemp)"
-            jq \
-              --arg ts "$now_epoch" \
-              --arg geoip "$geoip_url" \
-              --arg geosite "$geosite_url" \
-              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
-              INCY/DEFAULT.JSON > "$tmp"
-            mv "$tmp" INCY/DEFAULT.JSON
-            tmp="$(mktemp)"
-            jq \
-              --arg ts "$now_epoch" \
-              --arg geoip "$geoip_url" \
-              --arg geosite "$geosite_url" \
-              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
-              INCY/WHITELIST.JSON > "$tmp"
-            mv "$tmp" INCY/WHITELIST.JSON
-            tmp="$(mktemp)"
-            jq \
-              --arg ts "$now_epoch" \
-              --arg geoip "$geoip_url" \
-              --arg geosite "$geosite_url" \
-              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
-              INCY/JSONSUB.JSON > "$tmp"
-            mv "$tmp" INCY/JSONSUB.JSON
-          fi
-
-          default_b64="$(jq -c . INCY/DEFAULT.JSON | base64 -w 0)"
-          whitelist_b64="$(jq -c . INCY/WHITELIST.JSON | base64 -w 0)"
-          jsonsub_b64="$(jq -c . INCY/JSONSUB.JSON | base64 -w 0)"
-
-          printf 'incy://routing/onadd/%s\n' "$default_b64" > INCY/DEFAULT.DEEPLINK
-          printf 'incy://routing/onadd/%s\n' "$whitelist_b64" > INCY/WHITELIST.DEEPLINK
-          printf 'incy://routing/onadd/%s\n' "$jsonsub_b64" > INCY/JSONSUB.DEEPLINK
+          python3 scripts/render-routing-profiles.py dist/xray-json/happ .
 
       - name: Update SINGBOX geodata
         shell: bash
@@ -309,6 +223,9 @@ jobs:
               scripts/render-xray-json.sh \
               scripts/check-russian-ip.py \
               scripts/render-xray-least-load.sh \
+              scripts/render-routing-profiles.py \
+              scripts/tests/test_routing_profiles.py \
+              scripts/xray_templates.py \
               scripts/render-v2raytun.py \
               scripts/render-happ.py \
               scripts/check-happ.py \

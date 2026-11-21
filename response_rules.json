@@ -78,7 +78,9 @@
         ],
         "applyHeadersToEnd": true,
         "ignoreServeJsonAtBaseSubscription": true,
-        "excludeHostsByTags": ["INCY_EXCLUDE"]
+        "excludeHostsByTags": [
+          "INCY_EXCLUDE"
+        ]
       }
     },
     {
@@ -97,26 +99,17 @@
       "responseType": "XRAY_JSON"
     },
     {
-      "name": "V2RAYN",
-      "description": "Allow V2RAYN to get a subscription",
+      "name": "XRAY_JSON_CLIENTS",
+      "description": "Serve the shared Xray JSON policy to v2rayN and Throne",
       "enabled": true,
-      "operator": "AND",
+      "operator": "OR",
       "conditions": [
         {
           "headerName": "user-agent",
           "operator": "CONTAINS",
           "value": "v2rayn",
           "caseSensitive": false
-        }
-      ],
-      "responseType": "XRAY_JSON"
-    },
-    {
-      "name": "THRONE",
-      "description": "Allow THRONE to get a subscription",
-      "enabled": true,
-      "operator": "AND",
-      "conditions": [
+        },
         {
           "headerName": "user-agent",
           "operator": "CONTAINS",

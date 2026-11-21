@@ -45,3 +45,20 @@ class HappRenderTest(unittest.TestCase):
             self.assertEqual(profile["BlockSites"], [])
             self.assertIn("geosite:", (bundle / "default.json").read_text())
             self.assertNotIn("Geoipurl", default)
+
+    def test_happ_and_v2raytun_emit_the_same_three_compact_policies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            info = {kind: {"tag": tag, "url": f"https://raw.githubusercontent.com/losogudok/freemanvpn-{kind}/{tag}/release/{kind}.dat", "sha256": "a" * 64}
+                    for kind, tag in (("geoip", "202611211053"), ("geosite", "202611071812"))}
+            (root / "info.json").write_text(json.dumps(info))
+            for script, output, options in (
+                ("render-happ.py", "happ", ["--build-info", str(root / "info.json")]),
+                ("render-v2raytun.py", "v2raytun", []),
+            ):
+                result = subprocess.run(["python3", str(REPO / "scripts" / script), str(root / output), *options],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            for name in ("default.json", "leastload.json", "russian-ip.json"):
+                self.assertEqual(json.loads((root / "happ" / name).read_text()),
+                                 json.loads((root / "v2raytun" / name).read_text()))

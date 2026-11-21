@@ -59,7 +59,7 @@ class SyncTest(unittest.TestCase):
         (self.root / "XRAY_JSON").mkdir()
         (self.root / "SINGBOX").mkdir()
         (self.root / "runner").mkdir()
-        for name in ["sync-remnawave-routing.sh", "render-xray-least-load.sh", "render-v2raytun.py"]:
+        for name in ["sync-remnawave-routing.sh", "render-xray-least-load.sh", "render-v2raytun.py", "xray_templates.py"]:
             shutil.copy(REPO / "scripts" / name, self.root / "scripts" / name)
             (self.root / "scripts" / name).chmod(0o755)
         # Isolate only the network geodata download. Pool rendering, target
@@ -68,6 +68,7 @@ class SyncTest(unittest.TestCase):
         renderer.write_text('#!/usr/bin/env bash\nset -euo pipefail\nprintf "render\\n" >> "$TEST_RENDER_LOG"\ncp -- "$1" "$2"\n')
         renderer.chmod(0o755)
         (self.root / "XRAY_JSON/DEFAULT.JSON").write_text(json.dumps(BASE))
+        (self.root / "XRAY_JSON/RUSSIAN_IP.JSON").write_text(json.dumps(BASE))
         (self.root / "XRAY_JSON/LEASTLOAD.settings.json").write_text(json.dumps(POOL_SETTINGS))
         shutil.copy(REPO / "SINGBOX/DEFAULT.JSON", self.root / "SINGBOX/DEFAULT.JSON")
         shutil.copy(REPO / "response_rules.json", self.root / "response_rules.json")
@@ -250,6 +251,65 @@ class SyncTest(unittest.TestCase):
         for rule in rules[1:]:
             self.assertIn("HAPP_ONLY", rule["responseModifications"]["excludeHostsByTags"])
         self.assertEqual(rules[1]["responseType"], self.initial_settings["responseRules"]["rules"][1]["responseType"])
+
+    def share_happ_and_v2raytun_templates(self):
+        self.add_compact_templates()
+        self.add_happ_bundle()
+        old_default, old_auto, ru = self.happ_pins
+        del self.templates[old_default]
+        del self.templates[old_auto]
+        self.happ_pins = (COMPACT_UUID, COMPACT_AUTO_UUID, ru)
+        happ_auto = self.rendered_dir / "happ/leastload.json"
+        subprocess.run(["bash", str(self.root / "scripts/render-xray-least-load.sh"),
+                        "--rendered", str(self.root / "XRAY_JSON/DEFAULT.JSON"), str(happ_auto)], check=True)
+        files = [path for path in self.rendered_dir.rglob("*") if path.is_file() and path.name != "SHA256SUMS"]
+        (self.rendered_dir / "SHA256SUMS").write_text("".join(
+            f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(self.rendered_dir)}\n"
+            for path in files))
+        self.initial_templates = copy.deepcopy(self.templates)
+        self.initial_settings = copy.deepcopy(self.settings)
+
+    def test_happ_and_v2raytun_can_share_identical_compact_targets(self):
+        self.share_happ_and_v2raytun_templates()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rules = {rule["name"]: rule for rule in self.settings["responseRules"]["rules"]}
+        self.assertEqual(rules["V2RAYTUN"]["responseModifications"]["subscriptionTemplate"],
+                         rules["HAPP_PRIVATE_RUSSIAN_IP"]["responseModifications"]["subscriptionTemplate"])
+        self.assertEqual(self.patches.count(COMPACT_UUID), 1)
+        self.assertEqual(self.patches.count(COMPACT_AUTO_UUID), 1)
+        for name in ("V2RAYTUN", "HAPP_PRIVATE_RUSSIAN_IP"):
+            exclusions = rules[name]["responseModifications"]["excludeHostsByTags"]
+            self.assertIn("XRAY_EXPANDED_ONLY", exclusions)
+            self.assertNotIn("V2RAYTUN_ONLY", exclusions)
+            self.assertNotIn("HAPP_ONLY", exclusions)
+        for rule in rules.values():
+            if rule["name"] not in ("V2RAYTUN", "HAPP_PRIVATE_RUSSIAN_IP") and rule["responseType"] != "BROWSER":
+                self.assertIn("XRAY_COMPACT_ONLY", rule["responseModifications"]["excludeHostsByTags"])
+
+    def test_shared_compact_policy_conflict_aborts_before_writes(self):
+        self.share_happ_and_v2raytun_templates()
+        path = self.rendered_dir / "happ/default.json"
+        policy = json.loads(path.read_text())
+        policy["dns"] = {"hosts": {"conflict.invalid": "192.0.2.1"}}
+        path.write_text(json.dumps(policy))
+        files = [p for p in self.rendered_dir.rglob("*") if p.is_file() and p.name != "SHA256SUMS"]
+        (self.rendered_dir / "SHA256SUMS").write_text("".join(
+            f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(self.rendered_dir)}\n" for p in files))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.patches, [])
+        self.assertIn("conflicting Happ/v2RayTun policies", result.stderr)
+
+    def test_shared_compact_rollback_restores_each_target_once(self):
+        self.share_happ_and_v2raytun_templates()
+        self.failure = "settings"
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.templates, self.initial_templates)
+        self.assertEqual(self.settings, self.initial_settings)
+        self.assertEqual(self.patches.count(COMPACT_UUID), 2)
+        self.assertEqual(self.patches.count(COMPACT_AUTO_UUID), 2)
 
     def test_happ_settings_readback_failure_restores_templates_and_profile(self):
         self.add_happ_bundle()

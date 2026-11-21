@@ -6,17 +6,16 @@ import base64
 import copy
 import json
 from pathlib import Path
-import subprocess
-import tempfile
 import uuid
 from urllib.parse import urlparse
+
+from xray_templates import write_compact_templates
 
 
 REPO = Path(__file__).resolve().parents[1]
 
 
 def render(output_dir, template_name, happ_routing=None):
-    base = json.loads((REPO / "XRAY_JSON/DEFAULT.JSON").read_text())
     if happ_routing is None:
         happ = json.loads((REPO / "HAPP/DEFAULT.JSON").read_text())
     else:
@@ -63,17 +62,9 @@ def render(output_dir, template_name, happ_routing=None):
                        if header["key"].lower() not in ("routing", "geoipurl", "geositeurl")]
     mods["headers"].extend(headers)
 
-    with tempfile.TemporaryDirectory(prefix="v2raytun-render-") as directory:
-        pool_path = Path(directory) / "leastload.json"
-        # --rendered skips expansion, retaining the same source geo references.
-        subprocess.run(["bash", str(REPO / "scripts/render-xray-least-load.sh"),
-                        "--rendered", str(REPO / "XRAY_JSON/DEFAULT.JSON"), str(pool_path)],
-                       check=True)
-        pool = json.loads(pool_path.read_text())
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for name, value in (("default.json", base), ("leastload.json", pool), ("response-rule.json", rule)):
-        (output_dir / name).write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
+    write_compact_templates(output_dir)
+    (output_dir / "response-rule.json").write_text(
+        json.dumps(rule, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
 def main():

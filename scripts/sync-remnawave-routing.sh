@@ -253,6 +253,23 @@ fi
 if [[ "$happ_enabled" == "true" ]]; then
   happ_files=(default.json leastload.json russian-ip.json)
   for i in "${!happ_uuids[@]}"; do
+    # Client-specific headers can select the same policy templates. Register
+    # shared DEFAULT/Auto once so writes and rollback remain one transaction.
+    shared_source=""
+    if [[ "$compact_enabled" == "true" ]]; then
+      if (( i == 0 )) && [[ "${happ_uuids[$i]}" == "$compact_default_uuid" ]]; then
+        shared_source="$work_dir/v2raytun/default.json"
+      elif (( i == 1 )) && [[ "${happ_uuids[$i]}" == "$compact_auto_uuid" ]]; then
+        shared_source="$work_dir/v2raytun/leastload.json"
+      fi
+    fi
+    if [[ -n "$shared_source" ]]; then
+      jq -en --slurpfile shared "$shared_source" --slurpfile happ "$work_dir/happ/${happ_files[$i]}" \
+        '$shared[0] == $happ[0]' > /dev/null || {
+        echo "Shared compact UUID has conflicting Happ/v2RayTun policies" >&2; exit 1;
+      }
+      continue
+    fi
     get_json "$TEMPLATES_URL/${happ_uuids[$i]}" > "$work_dir/current-happ-$i.json"
     template_uuids+=("${happ_uuids[$i]}")
     rendered_templates+=("$work_dir/happ/${happ_files[$i]}")
@@ -292,10 +309,20 @@ for i in "${!template_uuids[@]}"; do
     '{uuid: $uuid, templateJson: $tpl[0]}' > "$work_dir/rollback-$i.json"
 done
 
+# Sharing both policy targets also shares the compact Auto/RU Host audience.
+# Neutral tags separate geodata representations, rather than client brands.
+shared_compact=false
+if [[ "$happ_enabled" == "true" && "$compact_enabled" == "true" \
+  && "${happ_uuids[0]}" == "$compact_default_uuid" \
+  && "${happ_uuids[1]}" == "$compact_auto_uuid" ]]; then
+  shared_compact=true
+fi
+
 SETTINGS_PATCH_PAYLOAD="$(
   jq -ce \
     --arg happ "$HAPP_DEFAULT" \
     --arg incy "$INCY_DEFAULT" \
+    --argjson shared_compact "$shared_compact" \
     --slurpfile v2raytun "$work_dir/v2raytun-rule.json" \
     --slurpfile singbox "$work_dir/singbox-template.json" \
     --slurpfile happ_target "$work_dir/happ-target.json" \
@@ -303,7 +330,7 @@ SETTINGS_PATCH_PAYLOAD="$(
       (.response // .) as $settings
       | ($settings.responseRules.rules // []) as $rules
       | ([$rules | to_entries[] | select(.value.name == "SINGBOX") | .key] | .[0]) as $singbox_index
-      | ([$rules | to_entries[] | select(.value.name == "THRONE") | .key] | .[0]) as $throne_index
+      | ([$rules | to_entries[] | select(.value.name == "THRONE" or .value.name == "XRAY_JSON_CLIENTS") | .key] | .[0]) as $throne_index
       | ([$rules | to_entries[] | select((.value.conditions // null) == []) | .key] | .[0]) as $fallback_index
       | ([$rules | to_entries[] | select(.value.name == "HAPP_PRIVATE_RUSSIAN_IP") | .key]) as $private
       | if $happ_target[0] != null and (
@@ -416,6 +443,17 @@ SETTINGS_PATCH_PAYLOAD="$(
                         ((.responseModifications.excludeHostsByTags // [])
                          + [if .name == "V2RAYTUN" then "V2RAYTUN_EXCLUDE" else "V2RAYTUN_ONLY" end]) | unique
                       )
+                    else . end
+                  | if $shared_compact and .responseType != "BROWSER" then
+                      . as $rule
+                      | .responseModifications.excludeHostsByTags = (
+                          (.responseModifications.excludeHostsByTags // [])
+                          | map(select(. != "HAPP_ONLY" and . != "V2RAYTUN_ONLY"))
+                          | if $rule.name == "V2RAYTUN" or $rule.name == "HAPP_PRIVATE_RUSSIAN_IP" then
+                              map(select(. != "HAPP_EXCLUDE" and . != "V2RAYTUN_EXCLUDE" and . != "RUSSIAN_IP"))
+                              + ["XRAY_EXPANDED_ONLY"]
+                            else . + ["XRAY_COMPACT_ONLY"] end
+                          | unique)
                     else . end
                 )
             )

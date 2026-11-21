@@ -164,7 +164,7 @@ class SingBoxTest(unittest.TestCase):
     def test_response_rule_is_ordered_and_scoped_to_singbox_clients(self):
         rules = json.loads(RESPONSE_RULES_PATH.read_text())["rules"]
         names = [rule["name"] for rule in rules]
-        self.assertLess(names.index("THRONE"), names.index("SINGBOX"))
+        self.assertLess(names.index("XRAY_JSON_CLIENTS"), names.index("SINGBOX"))
         self.assertLess(names.index("SINGBOX"), names.index("Fallback Base64"))
         rule = rules[names.index("SINGBOX")]
         self.assertEqual(rule["responseType"], "SINGBOX")

@@ -1,5 +1,10 @@
 # Happ: compact Xray JSON with FreemanVPN DAT
 
+For shared client deployments, use [the consolidation plan](shared-client-routing.md).
+Reuse the same compact DEFAULT/Auto/RU templates across compatible clients;
+do not create another client-named copy. The separate-client setup below
+is retained as the original rollout procedure.
+
 Personal panel setup was applied on 2026-11-21. See the
 [device acceptance report](happ-compact-acceptance-2026-11-21.md) for verified
 behavior and remaining limits.

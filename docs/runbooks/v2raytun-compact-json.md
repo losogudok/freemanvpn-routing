@@ -1,5 +1,10 @@
 # Compact v2RayTun subscriptions
 
+For shared client deployments, use [the consolidation plan](shared-client-routing.md).
+Reuse the same compact DEFAULT/Auto/RU templates across compatible clients;
+do not create another client-named copy. The separate-client setup below
+is retained as the original rollout procedure.
+
 v2RayTun Android **5.26.83** added `geoipurl` and `geositeurl` subscription
 headers ([official release notes](https://github.com/LXST-CODE/v2RayTun/releases/tag/android-v5.26.83)).
 These let the client fetch the FreemanVPN geo files instead of repeating
