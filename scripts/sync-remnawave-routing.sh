@@ -41,6 +41,34 @@ get_json() {
 
 TEMPLATES_LIST="$(get_json "$TEMPLATES_URL")"
 
+# Happ stays opt-in until the personal Android acceptance is complete.
+# Dedicated Host assignments use these three UUIDs; shared client templates stay intact.
+happ_enabled=false
+happ_uuids=("${REMNAWAVE_HAPP_TEMPLATE_UUID:-}" "${REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID:-}" "${REMNAWAVE_HAPP_RU_TEMPLATE_UUID:-}")
+printf 'null\n' > "$work_dir/happ-target.json"
+if [[ -n "${happ_uuids[0]}${happ_uuids[1]}${happ_uuids[2]}" ]]; then
+  happ_enabled=true
+  [[ -n "$rendered_dir" ]] || { echo "Happ requires a validated bundle argument" >&2; exit 1; }
+  for uuid in "${happ_uuids[@]}"; do
+    jq -e --arg uuid "$uuid" '
+      [(.response // .).templates[] | select(.uuid == $uuid and .templateType == "XRAY_JSON")]
+      | length == 1
+    ' <<< "$TEMPLATES_LIST" > /dev/null || { echo "Set all three distinct Happ XRAY_JSON UUIDs" >&2; exit 1; }
+  done
+  for file in default.json leastload.json russian-ip.json routing.deeplink; do
+    awk -v name="happ/$file" '$2 == name { found++ } END { exit(found != 1) }' "$rendered_dir/SHA256SUMS" || {
+      echo "Missing checksum coverage for happ/$file" >&2; exit 1;
+    }
+  done
+  # Copy all sources before any writes; never modify the validated artifact.
+  mkdir -p "$work_dir/happ"
+  cp -- "$rendered_dir"/happ/*.json "$work_dir/happ/"
+  happ_routing="$(tr -d '\n\r' < "$rendered_dir/happ/routing.deeplink")"
+  [[ "$happ_routing" == happ://routing/onadd/* ]] || { echo "Invalid Happ routing link" >&2; exit 1; }
+  jq -n --arg name "$(jq -r --arg uuid "${happ_uuids[0]}" '(.response // .).templates[] | select(.uuid == $uuid) | .name' <<< "$TEMPLATES_LIST")" \
+    --arg routing "$happ_routing" '{name: $name, routing: $routing}' > "$work_dir/happ-target.json"
+fi
+
 # Compact templates may be empty on first sync. Resolve names/UUIDs before
 # legacy discovery so the two Auto variants do not become ambiguous matches.
 jq \
@@ -131,11 +159,13 @@ fi
 
 TEMPLATE_UUID="$(
   jq -re --arg pinned "${REMNAWAVE_DEFAULT_TEMPLATE_UUID:-}" --arg ru "$ru_uuid" \
+    --argjson happ "$(printf '%s\n' "${happ_uuids[@]}" | jq -R . | jq -s .)" \
     --slurpfile compact "$work_dir/compact-targets.json" '
     (.response // .).templates
     | if type != "array" then error("unexpected subscription templates response") else . end
     | [.[] | select(.templateType == "XRAY_JSON" and .uuid != $ru)
-        | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)] as $templates
+        | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)
+      | select(.uuid as $uuid | $happ | index($uuid) | not)] as $templates
     | [$templates[] | select(.name == "Default Xray JSON")] as $named
     | [$templates[] | select(.uuid == $pinned)] as $byUuid
     | if $pinned != "" then
@@ -156,10 +186,12 @@ fi
 # List responses omit content. Inspect each JSON template to find the pool,
 # rejecting absent/ambiguous matches before any PATCH. An optional UUID pins it.
 jq -er --arg default "$TEMPLATE_UUID" --arg pinned "${REMNAWAVE_LEASTLOAD_TEMPLATE_UUID:-}" --arg ru "$ru_uuid" \
-  --slurpfile compact "$work_dir/compact-targets.json" '
+  --argjson happ "$(printf '%s\n' "${happ_uuids[@]}" | jq -R . | jq -s .)" \
+    --slurpfile compact "$work_dir/compact-targets.json" '
   (.response // .).templates
   | [.[] | select(.templateType == "XRAY_JSON" and .uuid != $default and .uuid != $ru)
       | select(.uuid != $compact[0].default.uuid and .uuid != $compact[0].auto.uuid)
+      | select(.uuid as $uuid | $happ | index($uuid) | not)
       | select($pinned == "" or .uuid == $pinned) | .uuid]
   | .[]
 ' <<< "$TEMPLATES_LIST" > "$work_dir/candidate-uuids.txt" || {
@@ -218,6 +250,15 @@ if [[ -n "$ru_uuid" ]]; then
   rendered_templates+=("$work_dir/russian-ip.json")
   current_responses+=("$work_dir/current-russian-ip.json")
 fi
+if [[ "$happ_enabled" == "true" ]]; then
+  happ_files=(default.json leastload.json russian-ip.json)
+  for i in "${!happ_uuids[@]}"; do
+    get_json "$TEMPLATES_URL/${happ_uuids[$i]}" > "$work_dir/current-happ-$i.json"
+    template_uuids+=("${happ_uuids[$i]}")
+    rendered_templates+=("$work_dir/happ/${happ_files[$i]}")
+    current_responses+=("$work_dir/current-happ-$i.json")
+  done
+fi
 if (( $(printf '%s\n' "${template_uuids[@]}" | sort -u | wc -l) != ${#template_uuids[@]} )); then
   echo "All managed template UUIDs must be different" >&2
   exit 1
@@ -227,7 +268,8 @@ for i in "${!template_uuids[@]}"; do
   # Preserve existing listener ports in both Auto variants. Empty compact
   # templates inherit DEFAULT's ports on their first sync.
   if [[ "${template_uuids[$i]}" == "${pool_uuids[0]}" \
-    || "${template_uuids[$i]}" == "${compact_auto_uuid:-}" ]]; then
+    || "${template_uuids[$i]}" == "${compact_auto_uuid:-}" \
+    || "${template_uuids[$i]}" == "${happ_uuids[1]}" ]]; then
     jq -e --slurpfile current "${current_responses[$i]}" '
       (.inbounds // []) |= map(
         . as $inbound
@@ -256,13 +298,23 @@ SETTINGS_PATCH_PAYLOAD="$(
     --arg incy "$INCY_DEFAULT" \
     --slurpfile v2raytun "$work_dir/v2raytun-rule.json" \
     --slurpfile singbox "$work_dir/singbox-template.json" \
+    --slurpfile happ_target "$work_dir/happ-target.json" \
     '
       (.response // .) as $settings
       | ($settings.responseRules.rules // []) as $rules
       | ([$rules | to_entries[] | select(.value.name == "SINGBOX") | .key] | .[0]) as $singbox_index
       | ([$rules | to_entries[] | select(.value.name == "THRONE") | .key] | .[0]) as $throne_index
       | ([$rules | to_entries[] | select((.value.conditions // null) == []) | .key] | .[0]) as $fallback_index
-      | if $settings.responseRules == null then
+      | ([$rules | to_entries[] | select(.value.name == "HAPP_PRIVATE_RUSSIAN_IP") | .key]) as $private
+      | if $happ_target[0] != null and (
+          ($private | length) != 1 or $private[0] >= ([$rules | to_entries[] | select(.value.name == "HAPP") | .key][0])
+          or $rules[$private[0]].enabled != true or $rules[$private[0]].operator != "AND"
+          or (any($rules[$private[0]].conditions[]?; .headerName == "x-remnawave-injected-short-uuid"
+              and .operator == "EQUALS" and (.value | length) > 0 and .caseSensitive == true) | not)
+          or (any($rules[$private[0]].conditions[]?; .headerName == "user-agent"
+              and .operator == "CONTAINS" and (.value | ascii_downcase) == "happ" and .caseSensitive == false) | not)
+        ) then error("Happ requires an enabled personal AND rule before HAPP with exact short UUID and Happ user-agent conditions")
+        elif $settings.responseRules == null then
           error("responseRules is null in subscription settings; create Response Rules in the panel first")
         elif ([$rules[] | select(.name == "HAPP")] | length) != 1 then
           error("expected exactly one HAPP response rule; found rule names: " + ([$rules[].name] | join(", ") | if . == "" then "<none>" else . end))
@@ -305,7 +357,18 @@ SETTINGS_PATCH_PAYLOAD="$(
             responseRules: (
               $settings.responseRules
               | .rules |= map(
-                  if .name == "HAPP" then
+                  if .name == "HAPP_PRIVATE_RUSSIAN_IP" and $happ_target[0] != null then
+                    .responseType = "XRAY_JSON"
+                    | .responseModifications.subscriptionTemplate = $happ_target[0].name
+                    | .responseModifications.ignoreHostXrayJsonTemplate = false
+                    | .responseModifications.applyHeadersToEnd = true
+                    | .responseModifications.headers = (
+                        [.responseModifications.headers[]? | select((.key | ascii_downcase) != "routing")]
+                        + [{key: "routing", value: $happ_target[0].routing}])
+                    | .responseModifications.excludeHostsByTags = (
+                        ((.responseModifications.excludeHostsByTags // []) + ["HAPP_EXCLUDE", "V2RAYTUN_ONLY", "RUSSIAN_IP"])
+                        | map(select(. != "HAPP_ONLY")) | unique)
+                  elif .name == "HAPP" then
                     .responseModifications.headers |= map(
                       if ((.key // "") | ascii_downcase) == "routing"
                       then .value = $happ
@@ -340,6 +403,11 @@ SETTINGS_PATCH_PAYLOAD="$(
                   else
                     .
                   end
+                  | if $happ_target[0] != null and .name != "HAPP_PRIVATE_RUSSIAN_IP"
+                      and .responseType != "BROWSER" then
+                      .responseModifications.excludeHostsByTags = (
+                        ((.responseModifications.excludeHostsByTags // []) + ["HAPP_ONLY"]) | unique)
+                    else . end
                   | if $v2raytun[0] != null
                       and (.responseType == "XRAY_JSON" or .responseType == "XRAY_BASE64"
                         or .responseType == "MIHOMO" or .responseType == "CLASH"
@@ -402,6 +470,12 @@ rollback() {
         customResponseHeaders: (.customResponseHeaders // null), responseRules: .responseRules
       }) == $expected
     ' <<< "$rollback_response" > /dev/null; then
+      if ! rollback_response="$(get_json "$SETTINGS_URL")" || ! jq -e --argjson expected "$CURRENT_SETTINGS_STATE" '
+        ((.response // .) | {customResponseHeaders: (.customResponseHeaders // null), responseRules: .responseRules}) == $expected
+      ' <<< "$rollback_response" > /dev/null; then
+        echo "Failed to verify rolled back Remnawave client routing headers" >&2
+        rollback_failed=true
+      fi
       echo "Rolled back Remnawave client routing headers" >&2
     else
       echo "Failed to roll back Remnawave client routing headers" >&2
@@ -455,5 +529,11 @@ jq -e --argjson expected "$SETTINGS_PATCH_PAYLOAD" '
   }) == ($expected | {customResponseHeaders: (.customResponseHeaders // null), responseRules: .responseRules})
 ' <<< "$SETTINGS_PATCH_RESPONSE" > /dev/null
 
+get_json "$SETTINGS_URL" > "$work_dir/settings-readback.json" || rollback
+jq -e --argjson expected "$SETTINGS_PATCH_PAYLOAD" '
+  ((.response // .) | {customResponseHeaders: (.customResponseHeaders // null), responseRules: .responseRules})
+    == ($expected | {customResponseHeaders: (.customResponseHeaders // null), responseRules: .responseRules})
+' "$work_dir/settings-readback.json" > /dev/null
+
 trap - ERR
-echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled, Russian IP: $ru_enabled)"
+echo "Remnawave ${#template_uuids[@]} templates and client routing headers updated (v2rayTun compact: $compact_enabled, sing-box: $singbox_enabled, Russian IP: $ru_enabled, Happ personal: $happ_enabled)"

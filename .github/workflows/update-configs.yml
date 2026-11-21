@@ -10,6 +10,10 @@ on:
   pull_request:
     paths:
       - XRAY_JSON/**
+      - HAPP/JSONSUB.JSON
+      - scripts/render-happ.py
+      - scripts/check-happ.py
+      - scripts/tests/test_happ.py
       - scripts/render-xray-json.sh
       - scripts/render-xray-least-load.sh
       - scripts/check-russian-ip.py
@@ -43,7 +47,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Test routing synchronization
-        run: python3 -m unittest discover -s scripts/tests -p 'test_remnawave_sync.py' -v
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_remnawave_sync.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_happ.py' -v
 
       - name: Install Xray
         shell: bash
@@ -96,8 +102,10 @@ jobs:
               geoip: {tag: $geoip_tag, url: $geoip_url, sha256: $geoip_sha256},
               geosite: {tag: $geosite_tag, url: $geosite_url, sha256: $geosite_sha256}}' \
             > "$ru_dir/build-info.json"
+          python3 scripts/render-happ.py "$bundle/happ" --build-info "$ru_dir/build-info.json"
+          python3 scripts/check-happ.py "$bundle/happ" --assets "$assets" --xray "$xray"
           (cd "$ru_dir" && sha256sum RUSSIAN_IP.JSON RUSSIAN_IP.compact.JSON build-info.json > SHA256SUMS)
-          (cd "$bundle" && sha256sum default.json leastload.json russian-ip/* > SHA256SUMS)
+          (cd "$bundle" && sha256sum default.json leastload.json russian-ip/* happ/* > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -169,85 +177,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Update HAPP configs
+      - uses: actions/download-artifact@v4
+        with:
+          name: xray-json
+          path: dist/xray-json
+
+      - name: Update HAPP configs from validated geodata snapshot
         shell: bash
         run: |
           set -euo pipefail
-          export TZ=UTC
+          (cd dist/xray-json && sha256sum --check SHA256SUMS)
+          info=dist/xray-json/happ/build-info.json
+          geoip_url="$(jq -r '.geoip.url' "$info")"
+          geosite_url="$(jq -r '.geosite.url' "$info")"
+          timestamp="$(jq -r '.LastUpdated' dist/xray-json/happ/routing.json)"
+          for mode in DEFAULT WHITELIST; do
+            jq --arg geoip "$geoip_url" --arg geosite "$geosite_url" --arg timestamp "$timestamp" \
+              '.Geoipurl = $geoip | .Geositeurl = $geosite | .LastUpdated = $timestamp' \
+              "HAPP/$mode.JSON" > "$RUNNER_TEMP/happ.json"
+            mv "$RUNNER_TEMP/happ.json" "HAPP/$mode.JSON"
+            printf 'happ://routing/onadd/%s\n' "$(jq -c . "HAPP/$mode.JSON" | base64 -w 0)" > "HAPP/$mode.DEEPLINK"
+          done
+          cp dist/xray-json/happ/routing.json HAPP/JSONSUB.JSON
+          cp dist/xray-json/happ/routing.deeplink HAPP/JSONSUB.DEEPLINK
 
-          GEOIP_REPO="losogudok/freemanvpn-geoip"
-          GEOSITE_REPO="losogudok/freemanvpn-geosite"
-
-          latest_tag() {
-            git ls-remote --tags "https://github.com/${1}.git" \
-              | awk '{print $2}' \
-              | sed -E 's@refs/tags/@@; s@\^\{\}@@' \
-              | grep -E '^[0-9]{12}$' \
-              | sort -r \
-              | head -n 1
-          }
-
-          epoch_to_tag_utc() {
-            local e="${1:-0}"
-            if [[ "$e" =~ ^[0-9]+$ ]] && (( e > 0 )); then
-              date -u -d "@$e" +%Y%m%d%H%M
-            else
-              printf '000000000000'
-            fi
-          }
-
-          current_epoch="$(jq -r '.LastUpdated // empty' HAPP/DEFAULT.JSON 2>/dev/null || true)"
-          [[ "$current_epoch" =~ ^[0-9]+$ ]] || current_epoch="0"
-          current_tag="$(epoch_to_tag_utc "$current_epoch")"
-
-          geoip_tag="$(latest_tag "$GEOIP_REPO")"
-          geosite_tag="$(latest_tag "$GEOSITE_REPO")"
-          [[ -n "$geoip_tag" && -n "$geosite_tag" ]]
-
-          max_tag="$(printf "%s\n%s\n" "$geoip_tag" "$geosite_tag" | sort -r | head -n 1)"
-
-          if [[ "$current_tag" < "$max_tag" ]]; then
-            now_epoch="$(date -u +%s)"
-            geoip_url="https://cdn.jsdelivr.net/gh/${GEOIP_REPO}@${geoip_tag}/release/geoip.dat"
-            geosite_url="https://cdn.jsdelivr.net/gh/${GEOSITE_REPO}@${geosite_tag}/release/geosite.dat"
-
-            curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -I "$geoip_url" >/dev/null
-            curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused -I "$geosite_url" >/dev/null
-
-            tmp="$(mktemp)"
-            jq \
-              --arg ts "$now_epoch" \
-              --arg geoip "$geoip_url" \
-              --arg geosite "$geosite_url" \
-              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
-              HAPP/DEFAULT.JSON > "$tmp"
-            mv "$tmp" HAPP/DEFAULT.JSON
-            tmp="$(mktemp)"
-            jq \
-              --arg ts "$now_epoch" \
-              --arg geoip "$geoip_url" \
-              --arg geosite "$geosite_url" \
-              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
-              HAPP/WHITELIST.JSON > "$tmp"
-            mv "$tmp" HAPP/WHITELIST.JSON
-            tmp="$(mktemp)"
-            jq \
-              --arg ts "$now_epoch" \
-              --arg geoip "$geoip_url" \
-              --arg geosite "$geosite_url" \
-              '.LastUpdated = $ts | .Geoipurl = $geoip | .Geositeurl = $geosite' \
-              HAPP/JSONSUB.JSON > "$tmp"
-            mv "$tmp" HAPP/JSONSUB.JSON
-          fi
-
-          default_b64="$(jq -c . HAPP/DEFAULT.JSON | base64 -w 0)"
-          whitelist_b64="$(jq -c . HAPP/WHITELIST.JSON | base64 -w 0)"
-          jsonsub_b64="$(jq -c . HAPP/JSONSUB.JSON | base64 -w 0)"
-
-          printf 'happ://routing/onadd/%s\n' "$default_b64" > HAPP/DEFAULT.DEEPLINK
-          printf 'happ://routing/onadd/%s\n' "$whitelist_b64" > HAPP/WHITELIST.DEEPLINK
-          printf 'happ://routing/onadd/%s\n' "$jsonsub_b64" > HAPP/JSONSUB.DEEPLINK
-          
       - name: Update INCY configs
         shell: bash
         run: |
@@ -357,6 +310,10 @@ jobs:
               scripts/check-russian-ip.py \
               scripts/render-xray-least-load.sh \
               scripts/render-v2raytun.py \
+              scripts/render-happ.py \
+              scripts/check-happ.py \
+              scripts/tests/test_happ.py \
+              HAPP/JSONSUB.JSON \
               scripts/update-singbox-geodata.py \
               scripts/sync-remnawave-routing.sh \
               scripts/tests/test_remnawave_sync.py \
@@ -367,7 +324,7 @@ jobs:
             fi
           fi
 
-          if git diff --quiet -- HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK SINGBOX/DEFAULT.JSON \
+          if git diff --quiet -- HAPP/JSONSUB.DEEPLINK HAPP/DEFAULT.DEEPLINK INCY/DEFAULT.DEEPLINK SINGBOX/DEFAULT.JSON \
             && [[ "$xray_source_changed" == "false" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -597,6 +554,9 @@ jobs:
       REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID: ${{ vars.REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID }}
       REMNAWAVE_SINGBOX_TEMPLATE_UUID: ${{ vars.REMNAWAVE_SINGBOX_TEMPLATE_UUID }}
       REMNAWAVE_RU_IP_TEMPLATE_UUID: ${{ vars.REMNAWAVE_RU_IP_TEMPLATE_UUID }}
+      REMNAWAVE_HAPP_TEMPLATE_UUID: ${{ vars.REMNAWAVE_HAPP_TEMPLATE_UUID }}
+      REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID: ${{ vars.REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID }}
+      REMNAWAVE_HAPP_RU_TEMPLATE_UUID: ${{ vars.REMNAWAVE_HAPP_RU_TEMPLATE_UUID }}
       HAPP_DEFAULT: ${{ needs.update.outputs.happ_default }}
       INCY_DEFAULT: ${{ needs.update.outputs.incy_default }}
 

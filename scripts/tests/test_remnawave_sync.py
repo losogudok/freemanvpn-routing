@@ -99,6 +99,7 @@ class SyncTest(unittest.TestCase):
         self.singbox_pin = ""
         self.ru_pin = ""
         self.rendered_dir = None
+        self.happ_pins = ("", "", "")
         self.readback_failure = None
         self.rollback_failure = None
         test = self
@@ -125,7 +126,11 @@ class SyncTest(unittest.TestCase):
                     else:
                         self.respond(test.templates[uuid])
                 elif self.path == "/api/subscription-settings":
-                    self.respond(test.settings)
+                    if test.readback_failure == "settings" and "settings" in test.patches:
+                        test.readback_failure = None
+                        self.respond({}, 500)
+                    else:
+                        self.respond(test.settings)
                 else:
                     self.respond({}, 404)
 
@@ -176,6 +181,9 @@ class SyncTest(unittest.TestCase):
                "REMNAWAVE_V2RAYTUN_AUTO_TEMPLATE_UUID": self.compact_pins[1],
                "REMNAWAVE_SINGBOX_TEMPLATE_UUID": self.singbox_pin,
                "REMNAWAVE_RU_IP_TEMPLATE_UUID": self.ru_pin,
+               "REMNAWAVE_HAPP_TEMPLATE_UUID": self.happ_pins[0],
+               "REMNAWAVE_HAPP_AUTO_TEMPLATE_UUID": self.happ_pins[1],
+               "REMNAWAVE_HAPP_RU_TEMPLATE_UUID": self.happ_pins[2],
                "TEST_RENDER_LOG": str(self.root / "renders.log")}
         command = ["bash", str(self.root / "scripts/sync-remnawave-routing.sh")]
         if self.rendered_dir is not None:
@@ -198,6 +206,83 @@ class SyncTest(unittest.TestCase):
             "templateJson": {"old": "Russian IP policy"},
         }
         self.initial_templates = copy.deepcopy(self.templates)
+
+    def add_happ_bundle(self):
+        self.happ_pins = tuple(f"88888888-8888-4888-8888-{i:012d}" for i in range(3))
+        self.rendered_dir = self.root / "bundle"
+        happ = self.rendered_dir / "happ"
+        happ.mkdir(parents=True)
+        for name in ("default.json", "leastload.json"):
+            (self.rendered_dir / name).write_text(json.dumps(BASE))
+        for uuid, name in zip(self.happ_pins, ("default.json", "leastload.json", "russian-ip.json")):
+            self.templates[uuid] = {"uuid": uuid, "name": "Happ " + name, "templateType": "XRAY_JSON",
+                                    "templateJson": {"old": name}}
+            (happ / name).write_text(json.dumps(BASE))
+        profile = {"UseChunkFiles": "false", "Geoipurl": "https://example.com/geoip.dat",
+                   "Geositeurl": "https://example.com/geosite.dat"}
+        self.happ_link = "happ://routing/onadd/" + base64.b64encode(json.dumps(profile).encode()).decode()
+        (happ / "routing.deeplink").write_text(self.happ_link + "\n")
+        files = [path for path in self.rendered_dir.rglob("*") if path.is_file()]
+        (self.rendered_dir / "SHA256SUMS").write_text("".join(
+            f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(self.rendered_dir)}\n"
+            for path in files))
+        self.settings["responseRules"]["rules"].insert(0, {
+            "name": "HAPP_PRIVATE_RUSSIAN_IP", "enabled": True, "operator": "AND",
+            "conditions": [{"headerName": "user-agent", "operator": "CONTAINS", "value": "happ", "caseSensitive": False},
+                           {"headerName": "x-remnawave-injected-short-uuid", "operator": "EQUALS", "value": "fixture-personal-id", "caseSensitive": True}],
+            "responseType": "XRAY_JSON", "responseModifications": {"excludeHostsByTags": ["HAPP_EXCLUDE", "V2RAYTUN_ONLY"]}})
+        self.initial_templates = copy.deepcopy(self.templates)
+        self.initial_settings = copy.deepcopy(self.settings)
+
+    def test_happ_personal_delivery_and_templates_are_synchronized_together(self):
+        self.add_happ_bundle()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rules = self.settings["responseRules"]["rules"]
+        private = rules[0]
+        mods = private["responseModifications"]
+        self.assertEqual(mods["subscriptionTemplate"], "Happ default.json")
+        self.assertFalse(mods["ignoreHostXrayJsonTemplate"])
+        self.assertIn({"key": "routing", "value": self.happ_link}, mods["headers"])
+        self.assertEqual(private["conditions"], self.initial_settings["responseRules"]["rules"][0]["conditions"])
+        for uuid in self.happ_pins:
+            self.assertEqual(self.templates[uuid]["templateJson"], BASE)
+        for rule in rules[1:]:
+            self.assertIn("HAPP_ONLY", rule["responseModifications"]["excludeHostsByTags"])
+        self.assertEqual(rules[1]["responseType"], self.initial_settings["responseRules"]["rules"][1]["responseType"])
+
+    def test_happ_settings_readback_failure_restores_templates_and_profile(self):
+        self.add_happ_bundle()
+        self.readback_failure = "settings"
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.templates, self.initial_templates)
+        self.assertEqual(self.settings, self.initial_settings)
+
+    def test_happ_ambiguous_write_restores_every_template(self):
+        self.add_happ_bundle()
+        self.failure = "persisted:" + self.happ_pins[2]
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.templates, self.initial_templates)
+        self.assertEqual(self.settings, self.initial_settings)
+
+    def test_happ_rejects_unsafe_personal_scope_before_writes(self):
+        self.add_happ_bundle()
+        self.settings["responseRules"]["rules"][0]["conditions"] = [
+            {"headerName": "user-agent", "operator": "CONTAINS", "value": "happ", "caseSensitive": False}]
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.patches, [])
+
+    def test_happ_requires_checksum_coverage_for_every_delivered_file(self):
+        self.add_happ_bundle()
+        sums = self.rendered_dir / "SHA256SUMS"
+        sums.write_text("\n".join(line for line in sums.read_text().splitlines()
+                                  if "happ/routing.deeplink" not in line) + "\n")
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.patches, [])
 
     def test_russian_ip_is_updated_with_shared_templates_and_headers(self):
         self.add_russian_ip_template()
